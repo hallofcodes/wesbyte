@@ -1,77 +1,89 @@
-# WESBYTE
+# Wesbyte
 
-### *Generate. Refine. Edit. Deploy. All with AI.*
+### ✨ Overview
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
-[![React](https://img.shields.io/badge/React-18-blue)](https://reactjs.org/)
-[![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)](https://tailwindcss.com/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+> A production-ready AI-powered no-code website builder built with Next.js and React. Users can generate full websites from prompts, refine them with AI, and then fully customize layouts using a professional drag-and-drop visual editor & no coding required.
 
----
 
-## 📖 Overview
+<div align="center">
 
-Wesbyte is a production‑ready, AI‑powered no‑code website builder.  
-Describe your dream website in plain English – the AI generates a complete, responsive layout instantly. Refine it through an intelligent chat interface, then visually customize every component with a drag‑and‑drop editor. Zero code required.
+[![GitHub License](https://img.shields.io/badge/Licence-MIT-red?style=flat-square)](https://github.com/hallofcodes/wesbyte/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/hallofcodes/wesbyte?style=flat-square)](https://github.com/hallofcodes/wesbyte/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/hallofcodes/wesbyte?style=flat-square)](https://github.com/hallofcodes/wesbyte/issues)
+[![Live Demo](https://img.shields.io/badge/LIVE-DEMO-success?style=flat-square)](https://wesbyte.hollofcodes.com)
 
-Built with **Next.js (App Router)** and **React**, it combines the best of generative AI and visual development tools (like Webflow/Framer) into a single seamless workflow.
+![Project Banner](/assets/preview/banner.png)
 
----
+**Next-Gen AI No-Code Website Creation Platform**
 
-## ✨ Features
+</div>
 
-### 🤖 AI Website Generation
-- Generate full page structures from a natural language prompt
-- Includes: Hero, Features, Pricing, FAQ, Testimonials, Footer, and more
-- Smart content suggestions based on your industry/use case
+## 🚀 Quick Start
 
-### 💬 AI Refinement Interface
-- Real‑time chat with AI to modify design, layout, styling, or copy
-- Instant updates – no re‑generation delays
-- Understands high‑level instructions (“make the CTA more prominent”, “use a softer colour palette”)
+### Prerequisites
+- Node.js 16.x+
+- npm 8.x+
 
-### 🎨 Visual Drag‑and‑Drop Editor
-- Webflow‑like visual editing with **dnd‑kit**
-- Move, resize, duplicate, or delete any component
-- Component library: buttons, cards, navbars, forms, grids, images, text blocks
-- Layer‑based structure panel (hierarchy + visibility toggles)
-- Responsive preview: desktop / tablet / mobile
-- Undo/redo system + automatic saving
-
-### 🚀 Production & Export
-- One‑click export as **React / Next.js** code (ready to deploy)
-- Built‑in SEO configuration (meta tags, Open Graph, sitemap)
-- Dark / light mode toggle for generated sites
-- Deployment‑ready output (Vercel, Netlify, or any Node.js host)
-
----
-
-## 🧱 Tech Stack
-
-| Category        | Technologies                                                                 |
-|----------------|-------------------------------------------------------------------------------|
-| Framework       | Next.js (App Router), React 18                                                |
-| Styling         | Tailwind CSS, Framer Motion (animations)                                      |
-| Drag & Drop     | dnd‑kit                                                                       |
-| State Management| Zustand (or Redux)                                                            |
-| Backend         | Firebase / Supabase (authentication, database, storage)                       |
-| AI Generation   | OpenAI API (GPT‑4 / GPT‑3.5‑turbo)                                            |
-| Deployment      | Vercel (recommended)                                                          |
-
----
-
-## ⚒️ Installation 
-
+### Installation
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/webgen-ai.git
-cd webgen-ai
+# Clone repository
+git clone https://github.com/hallofcodes/wesbyte.git
 
-# 2. Install dependencies
+# Navigate to project directory
+cd wesbyte
+
+# Install dependencies
 npm install
 
-# 3. Set up environment variables (see below)
-cp .env.example .env.local
+# Start development server
+npm run dev
+```
 
-# 4. Run the development server
-npm run dev```
+
+## 🔄 Development Workflow
+
+```mermaid
+%% Frontend Development Workflow
+graph TD
+  A[📝 User prompt] --> B[🛠 Generates Code]
+  B --> C[🧪 Unit Testing]
+  C --> D[🎨 UI Integration]
+  D --> E[📱 Responsive Testing]
+  E --> F[🚀 Production Build]
+  F --> G[🌐 Deployment]
+  G --> H[🔍 User Analytics]
+  H --> A
+  
+  style A fill:#FF6B6B,color:#fff
+  style B fill:#4ECDC4,color:#fff
+  style C fill:#45B7D1,color:#fff
+  style D fill:#96CEB4,color:#000
+  style E fill:#FFEEAD,color:#000
+  style F fill:#D4A5A5,color:#000
+  style G fill:#88D8B0,color:#000
+  style H fill:#FFCC5C,color:#000
+```
+
+---
+
+## 🧩 Feature Overview
+
+- 🧠 AI-powered website generation from prompts
+- 💬 Chat-based iterative design refinement
+- 🖌️ Fully visual drag-and-drop editor
+- 🧱 Component-based architecture system
+- 📱 Responsive design preview modes
+- 🎨 Theme, typography, and layout customization
+- 🧠 AI copywriting + design assistant
+- ⚡ Export to clean React/Next.js code
+- 🚀 One-click deployment support
+
+---
+
+## 📄 License
+MIT License - free to use, modify, and extend.
+
+---
+
+
+<div align="center">©2026 Hall of Codes - Samiun Nafis</div>
