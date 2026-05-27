@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DndContext,
   closestCenter,
@@ -19,15 +19,15 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
-} from '@dnd-kit/core';
+} from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Sparkles,
   Monitor,
@@ -60,17 +60,19 @@ import {
   ArrowRight,
   Box,
   Palette,
-} from 'lucide-react';
+  PanelLeft,
+  PanelRight,
+} from "lucide-react";
 import {
   useWebsiteStore,
   useEditorStore,
   useHistoryStore,
   useCurrentPage,
   useSelectedComponent,
-} from '@/store';
-import { ComponentType, WebsiteComponent, createComponent } from '@/types';
-import { ComponentRenderer } from '@/components/editor/renderers';
-import Link from 'next/link';
+} from "@/store";
+import { ComponentType, WebsiteComponent, createComponent } from "@/types";
+import { ComponentRenderer } from "@/components/editor/renderers";
+import Link from "next/link";
 
 // Component library items
 const componentLibrary: Array<{
@@ -79,24 +81,39 @@ const componentLibrary: Array<{
   icon: React.ComponentType<{ className?: string }>;
   category: string;
 }> = [
-  { type: 'hero', name: 'Hero', icon: Layout, category: 'Sections' },
-  { type: 'navbar', name: 'Navbar', icon: Layout, category: 'Navigation' },
-  { type: 'footer', name: 'Footer', icon: Layout, category: 'Navigation' },
-  { type: 'feature', name: 'Features', icon: Star, category: 'Sections' },
-  { type: 'pricing', name: 'Pricing', icon: DollarSign, category: 'Sections' },
-  { type: 'testimonial', name: 'Testimonials', icon: Users, category: 'Sections' },
-  { type: 'faq', name: 'FAQ', icon: HelpCircle, category: 'Sections' },
-  { type: 'contact-form', name: 'Contact Form', icon: Phone, category: 'Forms' },
-  { type: 'gallery', name: 'Gallery', icon: ImageIcon, category: 'Media' },
-  { type: 'cta', name: 'Call to Action', icon: ArrowRight, category: 'Sections' },
-  { type: 'heading', name: 'Heading', icon: Type, category: 'Basic' },
-  { type: 'text', name: 'Text Block', icon: FileText, category: 'Basic' },
-  { type: 'button', name: 'Button', icon: Box, category: 'Basic' },
-  { type: 'image', name: 'Image', icon: ImageIcon, category: 'Media' },
-  { type: 'card', name: 'Card', icon: Layout, category: 'Basic' },
-  { type: 'divider', name: 'Divider', icon: FileText, category: 'Layout' },
-  { type: 'spacer', name: 'Spacer', icon: FileText, category: 'Layout' },
-  { type: 'columns', name: 'Columns', icon: Grid, category: 'Layout' },
+  { type: "hero", name: "Hero", icon: Layout, category: "Sections" },
+  { type: "navbar", name: "Navbar", icon: Layout, category: "Navigation" },
+  { type: "footer", name: "Footer", icon: Layout, category: "Navigation" },
+  { type: "feature", name: "Features", icon: Star, category: "Sections" },
+  { type: "pricing", name: "Pricing", icon: DollarSign, category: "Sections" },
+  {
+    type: "testimonial",
+    name: "Testimonials",
+    icon: Users,
+    category: "Sections",
+  },
+  { type: "faq", name: "FAQ", icon: HelpCircle, category: "Sections" },
+  {
+    type: "contact-form",
+    name: "Contact Form",
+    icon: Phone,
+    category: "Forms",
+  },
+  { type: "gallery", name: "Gallery", icon: ImageIcon, category: "Media" },
+  {
+    type: "cta",
+    name: "Call to Action",
+    icon: ArrowRight,
+    category: "Sections",
+  },
+  { type: "heading", name: "Heading", icon: Type, category: "Basic" },
+  { type: "text", name: "Text Block", icon: FileText, category: "Basic" },
+  { type: "button", name: "Button", icon: Box, category: "Basic" },
+  { type: "image", name: "Image", icon: ImageIcon, category: "Media" },
+  { type: "card", name: "Card", icon: Layout, category: "Basic" },
+  { type: "divider", name: "Divider", icon: FileText, category: "Layout" },
+  { type: "spacer", name: "Spacer", icon: FileText, category: "Layout" },
+  { type: "columns", name: "Columns", icon: Grid, category: "Layout" },
 ];
 
 function ComponentLibraryItem({
@@ -159,7 +176,7 @@ function SortableItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
+      className={`group relative ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
     >
       <div
         {...attributes}
@@ -198,7 +215,7 @@ function SortableItem({
 function PropertiesPanel() {
   const selectedComponent = useSelectedComponent();
   const { updateComponentStyles, updateComponent } = useWebsiteStore();
-  const [activeTab, setActiveTab] = useState('style');
+  const [activeTab, setActiveTab] = useState("style");
 
   if (!selectedComponent) {
     return (
@@ -222,18 +239,31 @@ function PropertiesPanel() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="flex-1 flex flex-col"
+      >
         <TabsList className="mx-4 mt-2">
-          <TabsTrigger value="style" className="flex-1">Style</TabsTrigger>
-          <TabsTrigger value="content" className="flex-1">Content</TabsTrigger>
+          <TabsTrigger value="style" className="flex-1">
+            Style
+          </TabsTrigger>
+          <TabsTrigger value="content" className="flex-1">
+            Content
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="style" className="flex-1 overflow-auto p-4 space-y-4">
+        <TabsContent
+          value="style"
+          className="flex-1 overflow-auto p-4 space-y-4"
+        >
           {/* Padding */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Padding (px)</Label>
+            <Label className="text-xs text-muted-foreground">
+              Padding (px)
+            </Label>
             <div className="grid grid-cols-4 gap-2">
-              {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
+              {(["top", "right", "bottom", "left"] as const).map((side) => (
                 <Input
                   key={side}
                   type="number"
@@ -257,7 +287,7 @@ function PropertiesPanel() {
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Margin (px)</Label>
             <div className="grid grid-cols-4 gap-2">
-              {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
+              {(["top", "right", "bottom", "left"] as const).map((side) => (
                 <Input
                   key={side}
                   type="number"
@@ -279,11 +309,13 @@ function PropertiesPanel() {
 
           {/* Background Color */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Background Color</Label>
+            <Label className="text-xs text-muted-foreground">
+              Background Color
+            </Label>
             <div className="flex gap-2">
               <Input
                 type="color"
-                value={selectedComponent.styles.backgroundColor || '#ffffff'}
+                value={selectedComponent.styles.backgroundColor || "#ffffff"}
                 onChange={(e) => {
                   updateComponentStyles(selectedComponent.id, {
                     backgroundColor: e.target.value,
@@ -292,7 +324,7 @@ function PropertiesPanel() {
                 className="w-10 h-10 p-1"
               />
               <Input
-                value={selectedComponent.styles.backgroundColor || ''}
+                value={selectedComponent.styles.backgroundColor || ""}
                 onChange={(e) => {
                   updateComponentStyles(selectedComponent.id, {
                     backgroundColor: e.target.value,
@@ -310,7 +342,7 @@ function PropertiesPanel() {
             <div className="flex gap-2">
               <Input
                 type="color"
-                value={selectedComponent.styles.color || '#000000'}
+                value={selectedComponent.styles.color || "#000000"}
                 onChange={(e) => {
                   updateComponentStyles(selectedComponent.id, {
                     color: e.target.value,
@@ -319,7 +351,7 @@ function PropertiesPanel() {
                 className="w-10 h-10 p-1"
               />
               <Input
-                value={selectedComponent.styles.color || ''}
+                value={selectedComponent.styles.color || ""}
                 onChange={(e) => {
                   updateComponentStyles(selectedComponent.id, {
                     color: e.target.value,
@@ -333,9 +365,11 @@ function PropertiesPanel() {
 
           {/* Border Radius */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Border Radius</Label>
+            <Label className="text-xs text-muted-foreground">
+              Border Radius
+            </Label>
             <Input
-              value={selectedComponent.styles.borderRadius || ''}
+              value={selectedComponent.styles.borderRadius || ""}
               onChange={(e) => {
                 updateComponentStyles(selectedComponent.id, {
                   borderRadius: e.target.value,
@@ -349,7 +383,7 @@ function PropertiesPanel() {
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Width</Label>
             <Input
-              value={selectedComponent.styles.width || ''}
+              value={selectedComponent.styles.width || ""}
               onChange={(e) => {
                 updateComponentStyles(selectedComponent.id, {
                   width: e.target.value,
@@ -363,7 +397,7 @@ function PropertiesPanel() {
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Height</Label>
             <Input
-              value={selectedComponent.styles.height || ''}
+              value={selectedComponent.styles.height || ""}
               onChange={(e) => {
                 updateComponentStyles(selectedComponent.id, {
                   height: e.target.value,
@@ -374,13 +408,16 @@ function PropertiesPanel() {
           </div>
         </TabsContent>
 
-        <TabsContent value="content" className="flex-1 overflow-auto p-4 space-y-4">
+        <TabsContent
+          value="content"
+          className="flex-1 overflow-auto p-4 space-y-4"
+        >
           {/* Title */}
           {selectedComponent.content.title !== undefined && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Title</Label>
               <Input
-                value={selectedComponent.content.title || ''}
+                value={selectedComponent.content.title || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -398,7 +435,7 @@ function PropertiesPanel() {
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Subtitle</Label>
               <Input
-                value={selectedComponent.content.subtitle || ''}
+                value={selectedComponent.content.subtitle || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -417,7 +454,7 @@ function PropertiesPanel() {
               <Label className="text-xs text-muted-foreground">Text</Label>
               <textarea
                 className="w-full min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-                value={selectedComponent.content.text || ''}
+                value={selectedComponent.content.text || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -433,9 +470,11 @@ function PropertiesPanel() {
           {/* Button Text */}
           {selectedComponent.content.buttonText !== undefined && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Button Text</Label>
+              <Label className="text-xs text-muted-foreground">
+                Button Text
+              </Label>
               <Input
-                value={selectedComponent.content.buttonText || ''}
+                value={selectedComponent.content.buttonText || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -453,7 +492,7 @@ function PropertiesPanel() {
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Image URL</Label>
               <Input
-                value={selectedComponent.content.image || ''}
+                value={selectedComponent.content.image || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -469,10 +508,12 @@ function PropertiesPanel() {
           {/* Description */}
           {selectedComponent.content.description !== undefined && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Description</Label>
+              <Label className="text-xs text-muted-foreground">
+                Description
+              </Label>
               <textarea
                 className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm"
-                value={selectedComponent.content.description || ''}
+                value={selectedComponent.content.description || ""}
                 onChange={(e) => {
                   updateComponent(selectedComponent.id, {
                     content: {
@@ -512,7 +553,7 @@ function LayerItem({
     <div>
       <div
         className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted ${
-          selectedId === component.id ? 'bg-primary/10' : ''
+          selectedId === component.id ? "bg-primary/10" : ""
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => onSelect(component.id)}
@@ -605,10 +646,13 @@ export default function EditorPage() {
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
-  const [activeComponent, setActiveComponent] = useState<WebsiteComponent | null>(null);
+  const [activeComponent, setActiveComponent] =
+    useState<WebsiteComponent | null>(null);
+  const [isLeftOpen, setIsLeftOpen] = useState(false);
+  const [isRightOpen, setIsRightOpen] = useState(false);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -624,10 +668,10 @@ export default function EditorPage() {
 
     if (over && active.id !== over.id && currentPage) {
       const oldIndex = currentPage.components.findIndex(
-        (c) => c.id === active.id
+        (c) => c.id === active.id,
       );
       const newIndex = currentPage.components.findIndex(
-        (c) => c.id === over.id
+        (c) => c.id === over.id,
       );
 
       if (oldIndex !== -1 && newIndex !== -1) {
@@ -682,23 +726,23 @@ export default function EditorPage() {
   };
 
   const deviceSizes = {
-    desktop: 'w-full',
-    tablet: 'w-[768px] max-w-full',
-    mobile: 'w-[375px] max-w-full',
+    desktop: "w-full",
+    tablet: "w-[768px] max-w-full",
+    mobile: "w-[375px] max-w-full",
   };
 
   // Redirect to builder if no page exists
   useEffect(() => {
     if (!currentPage && !useWebsiteStore.getState().currentPageId) {
-      router.push('/builder');
+      router.push("/builder");
     }
   }, [currentPage, router]);
 
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
-      <header className="border-b flex items-center justify-between px-4 h-14">
-        <div className="flex items-center gap-4">
+      <header className="border-b flex justify-center lg:justify-between px-4 h-14">
+        <div className="hidden lg:flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
               <Sparkles className="h-4 w-4 text-white" />
@@ -707,11 +751,27 @@ export default function EditorPage() {
           </Link>
           <Separator orientation="vertical" className="h-6" />
           <span className="text-sm text-muted-foreground">
-            {currentPage?.name || 'Untitled'}
+            {currentPage?.name || "Untitled"}
           </span>
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setIsLeftOpen(true)}
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setIsRightOpen(true)}
+          >
+            <PanelRight className="h-4 w-4" />
+          </Button>
           {/* Undo/Redo */}
           <div className="flex items-center border rounded-lg">
             <Button
@@ -736,33 +796,33 @@ export default function EditorPage() {
           </div>
 
           {/* Device Preview */}
-          <div className="flex items-center border rounded-lg">
+          <div className="hidden md:flex items-center border rounded-lg">
             <button
-              onClick={() => setDevicePreview('desktop')}
+              onClick={() => setDevicePreview("desktop")}
               className={`p-2 ${
-                devicePreview === 'desktop'
-                  ? 'bg-primary text-primary-foreground'
-                  : ''
+                devicePreview === "desktop"
+                  ? "bg-primary text-primary-foreground"
+                  : ""
               }`}
             >
               <Monitor className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setDevicePreview('tablet')}
+              onClick={() => setDevicePreview("tablet")}
               className={`p-2 ${
-                devicePreview === 'tablet'
-                  ? 'bg-primary text-primary-foreground'
-                  : ''
+                devicePreview === "tablet"
+                  ? "bg-primary text-primary-foreground"
+                  : ""
               }`}
             >
               <Tablet className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setDevicePreview('mobile')}
+              onClick={() => setDevicePreview("mobile")}
               className={`p-2 ${
-                devicePreview === 'mobile'
-                  ? 'bg-primary text-primary-foreground'
-                  : ''
+                devicePreview === "mobile"
+                  ? "bg-primary text-primary-foreground"
+                  : ""
               }`}
             >
               <Smartphone className="h-4 w-4" />
@@ -771,26 +831,38 @@ export default function EditorPage() {
 
           <Button className="gap-2">
             <Save className="h-4 w-4" />
-            Save
+            <span className="hidden md:block">Save</span>
           </Button>
 
           <Button variant="outline" className="gap-2">
             <Eye className="h-4 w-4" />
-            Preview
+            <span className="hidden md:block">Preview</span>
           </Button>
 
           <Link href="/publish">
             <Button variant="default" className="gap-2">
-              Publish
+              <span className="hidden md:block">Publish</span>
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
         </div>
       </header>
 
+      {(isLeftOpen || isRightOpen) && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          onClick={() => {
+            setIsLeftOpen(false);
+            setIsRightOpen(false);
+          }}
+        />
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <div className="w-64 border-r flex flex-col">
+        <div
+          className={`fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${isLeftOpen ? "translate-x-0" : "-translate-x-full"} lg:flex`}
+        >
           <Tabs
             value={sidebarTab}
             onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}
@@ -807,28 +879,31 @@ export default function EditorPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="components" className="flex-1 overflow-auto p-2">
+            <TabsContent
+              value="components"
+              className="flex-1 overflow-auto p-2"
+            >
               <div className="space-y-4">
-                {Array.from(new Set(componentLibrary.map((c) => c.category))).map(
-                  (category) => (
-                    <div key={category}>
-                      <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                        {category}
-                      </h4>
-                      <div className="space-y-1">
-                        {componentLibrary
-                          .filter((c) => c.category === category)
-                          .map((item) => (
-                            <ComponentLibraryItem
-                              key={item.type}
-                              item={item}
-                              onAdd={() => handleAddComponent(item.type)}
-                            />
-                          ))}
-                      </div>
+                {Array.from(
+                  new Set(componentLibrary.map((c) => c.category)),
+                ).map((category) => (
+                  <div key={category}>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                      {category}
+                    </h4>
+                    <div className="space-y-1">
+                      {componentLibrary
+                        .filter((c) => c.category === category)
+                        .map((item) => (
+                          <ComponentLibraryItem
+                            key={item.type}
+                            item={item}
+                            onAdd={() => handleAddComponent(item.type)}
+                          />
+                        ))}
                     </div>
-                  )
-                )}
+                  </div>
+                ))}
               </div>
             </TabsContent>
 
@@ -863,7 +938,7 @@ export default function EditorPage() {
             <motion.div
               layout
               className={`bg-background border shadow-lg rounded ${deviceSizes[devicePreview]}`}
-              style={{ minHeight: 'calc(100vh - 250px)' }}
+              style={{ minHeight: "calc(100vh - 250px)" }}
             >
               <DndContext
                 sensors={sensors}
@@ -898,8 +973,8 @@ export default function EditorPage() {
                           Start building your page
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          Click on components in the left sidebar to add them to your page.
-                          Drag to reorder.
+                          Click on components in the left sidebar to add them to
+                          your page. Drag to reorder.
                         </p>
                       </div>
                     </div>
@@ -919,7 +994,9 @@ export default function EditorPage() {
         </div>
 
         {/* Right Sidebar - Properties */}
-        <div className="w-80 border-l flex flex-col">
+        <div
+          className={`fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-80 lg:translate-x-0 ${isRightOpen ? "translate-x-0" : "translate-x-full"} lg:flex`}
+        >
           <PropertiesPanel />
         </div>
       </div>
