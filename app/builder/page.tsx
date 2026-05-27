@@ -1,61 +1,87 @@
+"use client";
 
-'use client';
-
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/input';
-import { Sparkles, Wand2, Send, ArrowRight, Monitor, Tablet, Smartphone, RefreshCw, Lightbulb } from 'lucide-react';
-import { generateComponents } from '@/lib/ai';
-import { useWebsiteStore, useAIStore, useEditorStore } from '@/store';
-import { ComponentRenderer } from '@/components/editor/renderers';
-import Link from 'next/link';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
+import {
+  Sparkles,
+  Wand2,
+  Send,
+  ArrowRight,
+  Monitor,
+  Tablet,
+  Smartphone,
+  RefreshCw,
+  Lightbulb,
+  PanelLeft,
+} from "lucide-react";
+import { generateComponents } from "@/lib/ai";
+import { useWebsiteStore, useAIStore, useEditorStore } from "@/store";
+import { ComponentRenderer } from "@/components/editor/renderers";
+import Link from "next/link";
 
 const examplePrompts = [
-  'Create a modern landing page for a tech startup',
-  'Build a professional portfolio website for a designer',
-  'Design an e-commerce product page with pricing',
-  'Make a restaurant website with menu and reservations',
-  'Create a fitness studio landing page with class schedules',
+  "Create a modern landing page for a tech startup",
+  "Build a professional portfolio website for a designer",
+  "Design an e-commerce product page with pricing",
+  "Make a restaurant website with menu and reservations",
+  "Create a fitness studio landing page with class schedules",
 ];
 
 export default function BuilderPage() {
   const router = useRouter();
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { createWebsite, currentPageId, pages, addComponent } = useWebsiteStore();
+  const { createWebsite, currentPageId, pages, addComponent } =
+    useWebsiteStore();
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
   const { setDevicePreview, devicePreview } = useEditorStore();
 
   const currentPage = pages.find((p) => p.id === currentPageId);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
     const userPrompt = prompt;
-    setPrompt('');
-    addMessage('user', userPrompt);
+    setPrompt("");
+    addMessage("user", userPrompt);
     try {
       const components = await generateComponents(userPrompt);
-      if (!currentPageId) createWebsite('My Website');
+      if (!currentPageId) createWebsite("My Website");
       for (const comp of components) {
-        setTimeout(() => addComponent(comp.type), 100 * components.indexOf(comp));
+        setTimeout(
+          () => addComponent(comp.type),
+          100 * components.indexOf(comp),
+        );
       }
-      addMessage('assistant', `Generated ${components.length} components. Want changes or more sections?`);
+      addMessage(
+        "assistant",
+        `Generated ${components.length} components. Want changes or more sections?`,
+      );
       setShowSuggestions(false);
     } catch (error) {
-      addMessage('assistant', 'Error generating website. Please try again.');
+      addMessage("assistant", "Error generating website. Please try again.");
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, isGenerating, setIsGenerating, addMessage, currentPageId, createWebsite, addComponent]);
+  }, [
+    prompt,
+    isGenerating,
+    setIsGenerating,
+    addMessage,
+    currentPageId,
+    createWebsite,
+    addComponent,
+  ]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
@@ -67,7 +93,11 @@ export default function BuilderPage() {
       {currentPage && currentPage.components.length > 0 ? (
         <div className="min-h-full">
           {currentPage.components.map((component) => (
-            <ComponentRenderer key={component.id} component={component} isPreview />
+            <ComponentRenderer
+              key={component.id}
+              component={component}
+              isPreview
+            />
           ))}
         </div>
       ) : (
@@ -78,7 +108,8 @@ export default function BuilderPage() {
             </div>
             <h3 className="text-lg font-semibold mb-2">Your website preview</h3>
             <p className="text-sm text-muted-foreground">
-              Describe what you want to build, and your website will appear here.
+              Describe what you want to build, and your website will appear
+              here.
             </p>
           </div>
         </div>
@@ -91,15 +122,25 @@ export default function BuilderPage() {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
         <div className="flex h-16 items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-xl font-bold">Wesbyte</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setIsChatOpen(true)}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+            <Link href="/" className="flex items-center gap-2 shrink-0">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold">Wesbyte</span>
+            </Link>
+          </div>
           <div className="flex items-center gap-4">
             {currentPage && currentPage.components.length > 0 && (
-              <Button onClick={() => router.push('/editor')} className="gap-2">
+              <Button onClick={() => router.push("/editor")} className="gap-2">
                 <ArrowRight className="h-4 w-4" />
                 Continue to Editor
               </Button>
@@ -108,10 +149,20 @@ export default function BuilderPage() {
         </div>
       </header>
 
+      {/* Overlay for mobile sidebar */}
+      {isChatOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          onClick={() => setIsChatOpen(false)}
+        />
+      )}
+
       {/* Horizontal layout: side by side, scroll if needed */}
       <div className="flex-1 flex flex-row overflow-auto min-h-0">
-        {/* Chat Panel - fixed width */}
-        <div className="w-[400px] flex-shrink-0 border-r flex flex-col h-full">
+        {/* Chat Panel - fixed width on desktop, sidebar on mobile */}
+        <div
+          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${isChatOpen ? "translate-x-0" : "-translate-x-full"} md:flex md:shrink-0`}
+        >
           {/* Scrollable messages + suggestions */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message) => (
@@ -119,10 +170,14 @@ export default function BuilderPage() {
                 key={message.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <div
+                  className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">
+                    {message.content}
+                  </p>
                 </div>
               </motion.div>
             ))}
@@ -167,38 +222,65 @@ export default function BuilderPage() {
                 placeholder="Describe your website..."
                 className="min-h-[100px] pr-12 resize-none"
                 disabled={isGenerating}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleGenerate()}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && !e.shiftKey && handleGenerate()
+                }
               />
-              <Button size="icon" className="absolute right-2 bottom-2" onClick={handleGenerate} disabled={!prompt.trim() || isGenerating}>
-                {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Button
+                size="icon"
+                className="absolute right-2 bottom-2"
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating}
+              >
+                {isGenerating ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => setPrompt('Add a pricing table')} disabled={isGenerating}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setPrompt("Add a pricing table")}
+                disabled={isGenerating}
+              >
                 Add Pricing
               </Button>
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => setPrompt('Add testimonials')} disabled={isGenerating}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setPrompt("Add testimonials")}
+                disabled={isGenerating}
+              >
                 Add Testimonials
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground text-center">Be specific about style, sections, and purpose.</p>
+            <p className="text-xs text-muted-foreground text-center">
+              Be specific about style, sections, and purpose.
+            </p>
           </div>
         </div>
 
         {/* Preview Panel - flexible width */}
         <div className="flex-1 flex flex-col min-w-0 h-full">
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-            <span className="text-sm font-medium text-muted-foreground">Preview</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              Preview
+            </span>
             <div className="flex items-center border rounded-lg">
               {[
-                { device: 'desktop', icon: Monitor },
-                { device: 'tablet', icon: Tablet },
-                { device: 'mobile', icon: Smartphone },
+                { device: "desktop", icon: Monitor },
+                { device: "tablet", icon: Tablet },
+                { device: "mobile", icon: Smartphone },
               ].map(({ device, icon: Icon }) => (
                 <button
                   key={device}
                   onClick={() => setDevicePreview(device as any)}
-                  className={`p-2 ${devicePreview === device ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                  className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
                 >
                   <Icon className="h-4 w-4" />
                 </button>
@@ -210,17 +292,31 @@ export default function BuilderPage() {
               className="shadow-2xl overflow-hidden flex flex-col bg-background"
               style={{
                 width:
-                  devicePreview === 'desktop' ? 'min(1024px, 100%)' :
-                  devicePreview === 'tablet' ? 'min(768px, 100%)' : 'min(375px, 100%)',
+                  devicePreview === "desktop"
+                    ? "min(1024px, 100%)"
+                    : devicePreview === "tablet"
+                      ? "min(768px, 100%)"
+                      : "min(375px, 100%)",
                 height:
-                  devicePreview === 'desktop' ? 'min(768px, 80vh)' :
-                  devicePreview === 'tablet' ? 'min(1024px, 80vh)' : 'min(667px, 80vh)',
-                border: devicePreview !== 'desktop' ? '8px solid #1f2937' : '1px solid #e5e7eb',
-                borderRadius: devicePreview === 'desktop' ? '0.75rem' : devicePreview === 'tablet' ? '2rem' : '2rem',
+                  devicePreview === "desktop"
+                    ? "min(768px, 80vh)"
+                    : devicePreview === "tablet"
+                      ? "min(1024px, 80vh)"
+                      : "min(667px, 80vh)",
+                border:
+                  devicePreview !== "desktop"
+                    ? "8px solid #1f2937"
+                    : "1px solid #e5e7eb",
+                borderRadius:
+                  devicePreview === "desktop"
+                    ? "0.75rem"
+                    : devicePreview === "tablet"
+                      ? "2rem"
+                      : "2rem",
               }}
             >
               {/* Device chrome */}
-              {devicePreview === 'desktop' && (
+              {devicePreview === "desktop" && (
                 <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
                   <div className="flex gap-1.5">
                     <div className="h-3 w-3 rounded-full bg-red-500" />
@@ -230,12 +326,14 @@ export default function BuilderPage() {
                   <div className="flex-1 text-center">
                     <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
                       <Sparkles className="h-3 w-3" />
-                      {currentPage && currentPage.components.length > 0 ? 'Website Preview' : 'Your site'}
+                      {currentPage && currentPage.components.length > 0
+                        ? "Website Preview"
+                        : "Your site"}
                     </div>
                   </div>
                 </div>
               )}
-              {(devicePreview === 'tablet' || devicePreview === 'mobile') && (
+              {(devicePreview === "tablet" || devicePreview === "mobile") && (
                 <div className="bg-gray-800 flex justify-center py-1 flex-shrink-0">
                   <div className="h-1 w-12 rounded-full bg-gray-600" />
                 </div>
