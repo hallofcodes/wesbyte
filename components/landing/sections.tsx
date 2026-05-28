@@ -1,8 +1,14 @@
-'use client';
+"use client";
 
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Sparkles,
   Zap,
@@ -15,8 +21,9 @@ import {
   Layers,
   Code2,
   Wand2,
-} from 'lucide-react';
-import Link from 'next/link';
+} from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const fadeIn = {
   initial: { opacity: 0, y: 20 },
@@ -27,6 +34,119 @@ const fadeIn = {
 const staggerContainer = {
   animate: { transition: { staggerChildren: 0.1 } },
 };
+
+const states = ["prompt", "generated", "editor"] as const;
+
+type Mode = (typeof states)[number];
+
+export default function MorphDemo() {
+  const [mode, setMode] = useState<(typeof states)[number]>("prompt");
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMode((prev) => {
+        const idx = states.indexOf(prev);
+        return states[(idx + 1) % states.length];
+      });
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="h-full w-full overflow-hidden flex items-center justify-center p-2">
+      <div className="w-full h-full max-w-full">
+        <motion.div
+          layout
+          className="h-[240px] w-full overflow-hidden rounded-xl border bg-background p-3"
+        >
+          {/* PROMPT STATE */}
+          {mode === "prompt" && (
+            <motion.div
+              key="prompt"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-2"
+            >
+              <div className="text-sm text-muted-foreground">AI Prompt</div>
+              <div className="h-10 rounded-md bg-muted" />
+              <div className="h-10 w-2/3 rounded-md bg-muted" />
+            </motion.div>
+          )}
+
+          {/* GENERATED WEBSITE STATE */}
+          {mode === "generated" && (
+            <motion.div
+              key="generated"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-3"
+            >
+              <motion.div
+                layoutId="hero"
+                className="h-16 rounded-md bg-blue-100"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <motion.div
+                  layoutId="card1"
+                  className="h-20 rounded-md bg-blue-50"
+                />
+                <motion.div
+                  layoutId="card2"
+                  className="h-20 rounded-md bg-blue-50"
+                />
+              </div>
+              <motion.div
+                layoutId="footer"
+                className="h-10 rounded-md bg-blue-100"
+              />
+            </motion.div>
+          )}
+
+          {/* EDITOR STATE */}
+          {mode === "editor" && (
+            <motion.div
+              key="editor"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex gap-3"
+            >
+              {/* Sidebar */}
+              <div className="w-32 space-y-2">
+                <div className="h-6 bg-muted rounded" />
+                <div className="h-6 bg-muted rounded" />
+                <div className="h-6 bg-muted rounded" />
+              </div>
+
+              {/* Canvas */}
+              <div className="flex-1 space-y-3">
+                <motion.div
+                  layoutId="hero"
+                  className="h-20 rounded-md bg-green-100"
+                />
+                <motion.div
+                  layoutId="card1"
+                  className="h-16 rounded-md bg-green-50"
+                />
+                <motion.div
+                  layoutId="card2"
+                  className="h-16 rounded-md bg-green-50"
+                />
+                <motion.div
+                  layoutId="footer"
+                  className="h-10 rounded-md bg-green-100"
+                />
+              </div>
+            </motion.div>
+          )}
+        </motion.div>
+      </div>
+    </div>
+  );
+}
 
 export function HeroSection() {
   return (
@@ -44,9 +164,14 @@ export function HeroSection() {
           variants={staggerContainer}
           className="text-center"
         >
-          <motion.div variants={fadeIn} className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 mb-8">
+          <motion.div
+            variants={fadeIn}
+            className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 mb-8"
+          >
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">AI-Powered Website Builder</span>
+            <span className="text-sm font-medium">
+              AI-Powered Website Builder
+            </span>
           </motion.div>
 
           <motion.h1
@@ -55,18 +180,23 @@ export function HeroSection() {
           >
             Build Beautiful Websites
             <br />
-            <span className="text-gradient animate-gradient">With Just Words</span>
+            <span className="text-gradient animate-gradient">
+              With Just Words
+            </span>
           </motion.h1>
 
           <motion.p
             variants={fadeIn}
             className="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto"
           >
-            Describe what you want, and our AI creates a complete website. Then customize
-            everything visually without writing a single line of code.
+            Describe what you want, and our AI creates a complete website. Then
+            customize everything visually without writing a single line of code.
           </motion.p>
 
-          <motion.div variants={fadeIn} className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <motion.div
+            variants={fadeIn}
+            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+          >
             <Link href="/builder">
               <Button size="lg" className="gap-2 px-8 py-6 text-lg">
                 <Wand2 className="h-5 w-5" />
@@ -102,10 +232,10 @@ export function HeroSection() {
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.8 }}
+          transition={{ delay: 0.8, duration: 1.8 }}
           className="mt-16 relative"
         >
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent z-10 h-32 bottom-auto top-auto" />
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent z-10" />
           <div className="rounded-xl border bg-card shadow-2xl overflow-hidden">
             <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3">
               <div className="flex gap-1.5">
@@ -121,7 +251,11 @@ export function HeroSection() {
               </div>
             </div>
             <div className="aspect-video bg-muted/30">
-              ! -- WEB GEN DEMO HERE -- !
+              <div className="aspect-video bg-muted/30 overflow-hidden">
+                <div className="h-full w-full">
+                  <MorphDemo />
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -134,33 +268,38 @@ export function FeaturesSection() {
   const features = [
     {
       icon: Wand2,
-      title: 'AI-Powered Generation',
-      description: 'Describe your website in plain English. Our AI creates a complete, responsive design instantly.',
+      title: "AI-Powered Generation",
+      description:
+        "Describe your website in plain English. Our AI creates a complete, responsive design instantly.",
     },
     {
       icon: Layers,
-      title: 'Drag & Drop Editor',
-      description: 'Customize every element visually. Move, resize, style - all without touching code.',
+      title: "Drag & Drop Editor",
+      description:
+        "Customize every element visually. Move, resize, style - all without touching code.",
     },
     {
       icon: Palette,
-      title: 'Design Freedom',
-      description: 'Full control over colors, typography, spacing, animations, and more.',
+      title: "Design Freedom",
+      description:
+        "Full control over colors, typography, spacing, animations, and more.",
     },
     {
       icon: Monitor,
-      title: 'Responsive Preview',
-      description: 'See your site on desktop, tablet, and mobile. Perfect on every device.',
+      title: "Responsive Preview",
+      description:
+        "See your site on desktop, tablet, and mobile. Perfect on every device.",
     },
     {
       icon: Code2,
-      title: 'Clean Code Export',
-      description: 'Export production-ready React/Next.js code. Your code, your control.',
+      title: "Clean Code Export",
+      description:
+        "Export production-ready React/Next.js code. Your code, your control.",
     },
     {
       icon: Zap,
-      title: 'Lightning Fast',
-      description: 'Optimized for performance. Built-in SEO best practices.',
+      title: "Lightning Fast",
+      description: "Optimized for performance. Built-in SEO best practices.",
     },
   ];
 
@@ -214,46 +353,46 @@ export function FeaturesSection() {
 export function PricingSection() {
   const plans = [
     {
-      name: 'Free',
-      price: '$0',
-      description: 'Perfect for trying out',
+      name: "Free",
+      price: "$0",
+      description: "Perfect for trying out",
       features: [
-        '3 websites',
-        'Basic components',
-        'Community support',
-        'Export to React',
+        "3 websites",
+        "Basic components",
+        "Community support",
+        "Export to React",
       ],
-      cta: 'Get Started',
+      cta: "Get Started",
       popular: false,
     },
     {
-      name: 'Pro',
-      price: '$29',
-      description: 'For growing businesses',
+      name: "Pro",
+      price: "$29",
+      description: "For growing businesses",
       features: [
-        'Unlimited websites',
-        'Premium components',
-        'Priority support',
-        'Custom domains',
-        'Team collaboration',
-        'Advanced AI features',
+        "Unlimited websites",
+        "Premium components",
+        "Priority support",
+        "Custom domains",
+        "Team collaboration",
+        "Advanced AI features",
       ],
-      cta: 'Start Pro Trial',
+      cta: "Start Pro Trial",
       popular: true,
     },
     {
-      name: 'Enterprise',
-      price: '$99',
-      description: 'For large teams',
+      name: "Enterprise",
+      price: "$99",
+      description: "For large teams",
       features: [
-        'Everything in Pro',
-        'White label option',
-        'API access',
-        'Dedicated support',
-        'Custom integrations',
-        'SLA guarantee',
+        "Everything in Pro",
+        "White label option",
+        "API access",
+        "Dedicated support",
+        "Custom integrations",
+        "SLA guarantee",
       ],
-      cta: 'Contact Sales',
+      cta: "Contact Sales",
       popular: false,
     },
   ];
@@ -294,9 +433,7 @@ export function PricingSection() {
               )}
               <Card
                 className={`h-full ${
-                  plan.popular
-                    ? 'border-primary shadow-lg'
-                    : ''
+                  plan.popular ? "border-primary shadow-lg" : ""
                 }`}
               >
                 <CardHeader className="text-center">
@@ -320,7 +457,7 @@ export function PricingSection() {
                   </ul>
                   <Button
                     className="w-full mt-6"
-                    variant={plan.popular ? 'default' : 'outline'}
+                    variant={plan.popular ? "default" : "outline"}
                   >
                     {plan.cta}
                   </Button>
@@ -337,22 +474,28 @@ export function PricingSection() {
 export function TestimonialsSection() {
   const testimonials = [
     {
-      name: 'Sarah Johnson',
-      role: 'Founder, TechStart',
-      image: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150',
-      content: 'This platform transformed how we build websites. What used to take weeks now takes hours. The AI-generated designs are incredible.',
+      name: "Sarah Johnson",
+      role: "Founder, TechStart",
+      image:
+        "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150",
+      content:
+        "This platform transformed how we build websites. What used to take weeks now takes hours. The AI-generated designs are incredible.",
     },
     {
-      name: 'Michael Chen',
-      role: 'Creative Director',
-      image: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
-      content: 'As a designer, I was skeptical. But the visual editor gives me complete control. Best of both worlds - AI speed with design freedom.',
+      name: "Michael Chen",
+      role: "Creative Director",
+      image:
+        "https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150",
+      content:
+        "As a designer, I was skeptical. But the visual editor gives me complete control. Best of both worlds - AI speed with design freedom.",
     },
     {
-      name: 'Emily Rodriguez',
-      role: 'Small Business Owner',
-      image: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150',
-      content: 'I launched my bakery website in one afternoon. No developers, no designers. Just me describing what I wanted. Amazing!',
+      name: "Emily Rodriguez",
+      role: "Small Business Owner",
+      image:
+        "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150",
+      content:
+        "I launched my bakery website in one afternoon. No developers, no designers. Just me describing what I wanted. Amazing!",
     },
   ];
 
@@ -365,9 +508,7 @@ export function TestimonialsSection() {
           viewport={{ once: true }}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl md:text-4xl font-bold">
-            Loved by Creators
-          </h2>
+          <h2 className="text-3xl md:text-4xl font-bold">Loved by Creators</h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
             Join thousands of creators building beautiful websites.
           </p>
@@ -386,7 +527,10 @@ export function TestimonialsSection() {
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-1 mb-4">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      <Star
+                        key={i}
+                        className="h-4 w-4 fill-yellow-400 text-yellow-400"
+                      />
                     ))}
                   </div>
                   <p className="text-muted-foreground mb-6">
