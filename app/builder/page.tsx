@@ -266,85 +266,112 @@ export default function BuilderPage() {
         </div>
 
         {/* Preview Panel - flexible width */}
-        <div className="flex-1 flex flex-col min-w-0 h-full">
-          <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-            <span className="text-sm font-medium text-muted-foreground">
-              Preview
-            </span>
-            <div className="flex items-center border rounded-lg">
-              {[
-                { device: "desktop", icon: Monitor },
-                { device: "tablet", icon: Tablet },
-                { device: "mobile", icon: Smartphone },
-              ].map(({ device, icon: Icon }) => (
-                <button
-                  key={device}
-                  onClick={() => setDevicePreview(device as any)}
-                  className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
+     {/* Preview Panel */}
+<div className="flex-1 flex flex-col min-w-0 h-full">
+  {/* Top bar */}
+  <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
+    <span className="text-sm font-medium text-muted-foreground">
+      Preview
+    </span>
+
+    <div className="flex items-center border rounded-lg">
+      {[
+        { device: "desktop", icon: Monitor },
+        { device: "tablet", icon: Tablet },
+        { device: "mobile", icon: Smartphone },
+      ].map(({ device, icon: Icon }) => (
+        <button
+          key={device}
+          onClick={() => setDevicePreview(device as any)}
+          className={`p-2 ${
+            devicePreview === device
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted"
+          }`}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      ))}
+    </div>
+  </div>
+
+  {/* Center stage */}
+  <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
+    {/* DEVICE WRAPPER */}
+    <div
+      className="shadow-2xl bg-background overflow-hidden flex flex-col"
+      style={{
+        width:
+          devicePreview === "desktop"
+            ? "min(1200px, 100%)"
+            : devicePreview === "tablet"
+              ? "min(820px, 100%)"
+              : "min(390px, 100%)",
+
+        aspectRatio:
+          devicePreview === "desktop"
+            ? "16 / 10"
+            : devicePreview === "tablet"
+              ? "4 / 3"
+              : "9 / 19.5",
+
+        border:
+          devicePreview === "desktop"
+            ? "1px solid #e5e7eb"
+            : "10px solid #1f2937",
+
+        borderRadius:
+          devicePreview === "desktop"
+            ? "12px"
+            : devicePreview === "tablet"
+              ? "28px"
+              : "36px",
+      }}
+    >
+      {/* Desktop chrome */}
+      {devicePreview === "desktop" && (
+        <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
+          <div className="flex gap-1.5">
+            <div className="h-3 w-3 rounded-full bg-red-500" />
+            <div className="h-3 w-3 rounded-full bg-yellow-500" />
+            <div className="h-3 w-3 rounded-full bg-green-500" />
           </div>
-          <div className="flex-1 bg-muted/30 overflow-auto p-4 flex justify-center items-center">
-            <div
-              className="shadow-2xl overflow-hidden flex flex-col bg-background"
-              style={{
-                width:
-                  devicePreview === "desktop"
-                    ? "min(1024px, 100%)"
-                    : devicePreview === "tablet"
-                      ? "min(768px, 100%)"
-                      : "min(375px, 100%)",
-                height:
-                  devicePreview === "desktop"
-                    ? "min(768px, 80vh)"
-                    : devicePreview === "tablet"
-                      ? "min(1024px, 80vh)"
-                      : "min(667px, 80vh)",
-                border:
-                  devicePreview !== "desktop"
-                    ? "8px solid #1f2937"
-                    : "1px solid #e5e7eb",
-                borderRadius:
-                  devicePreview === "desktop"
-                    ? "0.75rem"
-                    : devicePreview === "tablet"
-                      ? "2rem"
-                      : "2rem",
-              }}
-            >
-              {/* Device chrome */}
-              {devicePreview === "desktop" && (
-                <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
-                  <div className="flex gap-1.5">
-                    <div className="h-3 w-3 rounded-full bg-red-500" />
-                    <div className="h-3 w-3 rounded-full bg-yellow-500" />
-                    <div className="h-3 w-3 rounded-full bg-green-500" />
-                  </div>
-                  <div className="flex-1 text-center">
-                    <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
-                      <Sparkles className="h-3 w-3" />
-                      {currentPage && currentPage.components.length > 0
-                        ? "Website Preview"
-                        : "Your site"}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {(devicePreview === "tablet" || devicePreview === "mobile") && (
-                <div className="bg-gray-800 flex justify-center py-1 flex-shrink-0">
-                  <div className="h-1 w-12 rounded-full bg-gray-600" />
-                </div>
-              )}
-              <div className="flex-1 overflow-y-auto">
-                {renderPreviewContent()}
-              </div>
+
+          <div className="flex-1 text-center">
+            <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
+              <Sparkles className="h-3 w-3" />
+              Preview
             </div>
           </div>
         </div>
+      )}
+
+      {/* PHONE + TABLET TOP CHROME */}
+      {(devicePreview === "mobile" || devicePreview === "tablet") && (
+        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+          {/* optional top speaker notch line */}
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
+        </div>
+      )}
+
+      {/* CONTENT AREA */}
+      <div className="flex-1 overflow-y-auto">
+        {renderPreviewContent()}
       </div>
+
+      {/* PHONE + TABLET BOTTOM GESTURE BAR */}
+      {(devicePreview === "mobile" || devicePreview === "tablet") && (
+        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
+            <div className="h-1 w-12 rounded-full bg-gray-500/80" />
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</div>
+     
+        </div>
     </div>
   );
 }
