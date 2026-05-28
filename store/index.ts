@@ -198,45 +198,45 @@ export const useWebsiteStore = create<WebsiteState>()(
           }
         }),
 
-      addComponent: (type, parentId = null, index) => {
-        let newComponentId = '';
-        set((state) => {
-          const currentPage = state.pages.find((p) => p.id === state.currentPageId);
-          if (!currentPage) return;
+      addComponent: (component: WebsiteComponent, parentId = null, index) => {
+  let newComponentId = '';
 
-          const addComponentRecursive = (
-            components: WebsiteComponent[],
-            parentId: string | null,
-            newComponent: WebsiteComponent,
-            targetIndex?: number
-          ): boolean => {
-            if (parentId === null) {
-              const insertIndex = targetIndex !== undefined ? targetIndex : components.length;
-              components.splice(insertIndex, 0, newComponent);
-              return true;
-            }
-            for (const comp of components) {
-              if (comp.id === parentId) {
-                if (!comp.children) comp.children = [];
-                const insertIndex = targetIndex !== undefined ? targetIndex : comp.children.length;
-                comp.children.splice(insertIndex, 0, newComponent);
-                newComponent.parentId = parentId;
-                return true;
-              }
-              if (comp.children && addComponentRecursive(comp.children, parentId, newComponent)) {
-                return true;
-              }
-            }
-            return false;
-          };
+  set((state) => {
+    const currentPage = state.pages.find(p => p.id === state.currentPageId);
+    if (!currentPage) return;
 
-          const newComponent = createComponent(type);
-          newComponentId = newComponent.id;
-          addComponentRecursive(currentPage.components, parentId, newComponent, index);
-        });
-        return newComponentId;
-      },
+    const newComponent: WebsiteComponent = {
+      ...component,
+      parentId: parentId || null,
+    };
 
+    newComponentId = newComponent.id;
+
+    const insert = (components: WebsiteComponent[]): boolean => {
+      if (parentId === null) {
+        const i = index ?? components.length;
+        components.splice(i, 0, newComponent);
+        return true;
+      }
+
+      for (const comp of components) {
+        if (comp.id === parentId) {
+          if (!comp.children) comp.children = [];
+          const i = index ?? comp.children.length;
+          comp.children.splice(i, 0, newComponent);
+          return true;
+        }
+        if (comp.children && insert(comp.children)) return true;
+      }
+      return false;
+    };
+
+    insert(currentPage.components);
+  });
+
+  return newComponentId;
+},
+      
       updateComponent: (componentId, updates) =>
         set((state) => {
           const currentPage = state.pages.find((p) => p.id === state.currentPageId);

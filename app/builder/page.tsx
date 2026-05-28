@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { generateComponents } from "@/lib/ai";
 import { useWebsiteStore, useAIStore, useEditorStore } from "@/store";
-import { ComponentRenderer } from "@/components/editor/renderers";
+import { ComponentRenderer, RenderNode } from "@/components/editor/renderers";
 import Link from "next/link";
 
 const examplePrompts = [
@@ -47,41 +47,45 @@ export default function BuilderPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
+  
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || isGenerating) return;
-    setIsGenerating(true);
-    const userPrompt = prompt;
-    setPrompt("");
-    addMessage("user", userPrompt);
-    try {
-      const components = await generateComponents(userPrompt);
-      if (!currentPageId) createWebsite("My Website");
-      for (const comp of components) {
-        setTimeout(
-          () => addComponent(comp.type),
-          100 * components.indexOf(comp),
-        );
-      }
-      addMessage(
-        "assistant",
-        `Generated ${components.length} components. Want changes or more sections?`,
-      );
-      setShowSuggestions(false);
-    } catch (error) {
-      addMessage("assistant", "Error generating website. Please try again.");
-    } finally {
-      setIsGenerating(false);
+  if (!prompt.trim() || isGenerating) return;
+
+  setIsGenerating(true);
+
+  const userPrompt = prompt;
+  setPrompt("");
+
+  addMessage("user", userPrompt);
+
+  try {
+    const components = await generateComponents(userPrompt);
+
+    if (!currentPageId) {
+      createWebsite("My Website");
     }
-  }, [
-    prompt,
-    isGenerating,
-    setIsGenerating,
-    addMessage,
-    currentPageId,
-    createWebsite,
-    addComponent,
-  ]);
+    
+    addComponent(components)
+    addMessage(
+      "assistant",
+      `Generated components. Want changes or more sections?`
+    );
+    setShowSuggestions(false);
+  } catch (error) {
+    console.error(error);
+   addMessage("assistant", "Error generating website. Please try again.");
+  } finally {
+    setIsGenerating(false);
+  }
+}, [
+  prompt,
+  isGenerating,
+  setIsGenerating,
+  addMessage,
+  currentPageId,
+  createWebsite,
+  addComponent,
+]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
@@ -92,12 +96,8 @@ export default function BuilderPage() {
     <>
       {currentPage && currentPage.components.length > 0 ? (
         <div className="min-h-full">
-          {currentPage.components.map((component) => (
-            <ComponentRenderer
-              key={component.id}
-              component={component}
-              isPreview
-            />
+          {currentPage?.components?.map((component) => (
+            <RenderNode node={component}/>
           ))}
         </div>
       ) : (
