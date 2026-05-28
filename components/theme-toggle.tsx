@@ -14,10 +14,9 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
+    // Return a placeholder button with the same dimensions, no icon to avoid flash
     return (
-      <Button variant="ghost" size="icon" className="h-9 w-9">
-        <Sun className="h-4 w-4" />
-      </Button>
+      <Button variant="ghost" size="icon" className="h-9 w-9" />
     );
   }
 
@@ -26,7 +25,10 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       className="h-9 w-9"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      onClick={() => 
+      {
+     
+      setTheme(theme === 'dark' ? 'light' : 'dark')}}
     >
       {theme === 'dark' ? (
         <Sun className="h-4 w-4" />

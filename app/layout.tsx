@@ -1,19 +1,19 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from '@/components/theme-provider.tsx';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AI Website Builder - Create Beautiful Websites with AI',
+  title: 'Wesbyte - Create Beautiful Websites with AI',
   description: 'Build professional websites instantly with AI. Describe what you want, and our AI creates it. Customize everything visually without coding.',
   openGraph: {
     title: 'AI Website Builder - Create Beautiful Websites with AI',
     description: 'Build professional websites instantly with AI. No coding required.',
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: '/assets/preview/banner.png',
       },
     ],
   },
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     description: 'Build professional websites instantly with AI. No coding required.',
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: '/assets/preview/banner.png',
       },
     ],
   },
