@@ -1,0 +1,2 @@
+export type ComponentType = 'div' | 'section' | 'heading' | 'paragraph' | 'button' | 'image' | 'container';
+export interface TreeNode { id: string; type: ComponentType; props: Record<string, any>; styles?: React.CSSProperties; children?: TreeNode[]; }
