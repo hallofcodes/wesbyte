@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,39 +18,187 @@ import {
   X,
   Box,
   Settings,
+  ChevronDown,
+  ChevronRight,
+  Square,
+  Heading1,
+  Heading2,
+  Heading3,
+  AlignLeft,
+  ButtonIcon,
+  Image,
+  Input as InputIcon,
+  Link,
+  Menu,
+  Home,
+  Info,
+  Mail,
+  Circle,
 } from "lucide-react";
 import NextLink from "next/link";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
 
 // ------------------------------
-// Helper functions (unchanged)
+// JSX Parser
 // ------------------------------
-function extractTags(jsxCode: string): string[] {
-  const tagRegex = /<(\w+)[\s>]/g;
-  const tags = new Set<string>();
-  let match;
-  while ((match = tagRegex.exec(jsxCode)) !== null) {
-    tags.add(match[1]);
+type JsxNode = {
+  tag: string;
+  children: JsxNode[];
+};
+
+function parseJsxToTree(jsxCode: string): JsxNode[] {
+  const lines = jsxCode.split("\n");
+  const stack: { node: JsxNode; indent: number }[] = [];
+  const roots: JsxNode[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const indent = line.search(/\S/);
+    if (indent === -1) continue;
+
+    const openMatch = trimmed.match(/^<([\w-]+)(?:\s|>)/);
+    const closeMatch = trimmed.match(/^<\/([\w-]+)>/);
+
+    if (closeMatch) {
+      while (stack.length && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+      continue;
+    }
+
+    if (openMatch) {
+      const tag = openMatch[1];
+      const node: JsxNode = { tag, children: [] };
+      while (stack.length && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+      if (stack.length === 0) {
+        roots.push(node);
+      } else {
+        stack[stack.length - 1].node.children.push(node);
+      }
+      stack.push({ node, indent });
+    }
   }
-  return Array.from(tags);
+  return roots;
 }
 
+// ------------------------------
+// Helper functions (className)
+// ------------------------------
 function getClassNameForTag(jsxCode: string, tag: string): string {
-  const regex = new RegExp(`<${tag}\\s+className="([^"]*)"`, 'i');
+  const regex = new RegExp(`<${tag}\\s+className="([^"]*)"`, "i");
   const match = jsxCode.match(regex);
   return match ? match[1] : "";
 }
 
 function updateClassNameInCode(jsxCode: string, tag: string, newClassName: string): string {
-  const regex = new RegExp(`(<${tag}\\s+className=")[^"]*(")`, 'i');
+  const regex = new RegExp(`(<${tag}\\s+className=")[^"]*(")`, "i");
   if (regex.test(jsxCode)) {
     return jsxCode.replace(regex, `$1${newClassName}$2`);
   }
-  const openTagRegex = new RegExp(`(<${tag})([^>]*)(>)`, 'i');
+  const openTagRegex = new RegExp(`(<${tag})([^>]*)(>)`, "i");
   return jsxCode.replace(openTagRegex, `$1$2 className="${newClassName}"$3`);
 }
 
+// ------------------------------
+// Icon mapping
+// ------------------------------
+const tagIconMap: Record<string, React.ElementType> = {
+  div: Square,
+  header: Menu,
+  nav: Menu,
+  main: Home,
+  section: Info,
+  article: Mail,
+  footer: Mail,
+  h1: Heading1,
+  h2: Heading2,
+  h3: Heading3,
+  p: AlignLeft,
+  button: ButtonIcon,
+  img: Image,
+  input: InputIcon,
+  a: Link,
+  ul: Menu,
+  li: Circle,
+  span: AlignLeft,
+};
+
+const FallbackIcon = Square;
+
+// ------------------------------
+// TreeItem component with lines and icons
+// ------------------------------
+function TreeItem({
+  node,
+  selectedTag,
+  onSelect,
+  depth = 0,
+}: {
+  node: JsxNode;
+  selectedTag: string | null;
+  onSelect: (tag: string) => void;
+  depth?: number;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+  const hasChildren = node.children.length > 0;
+  const isSelected = selectedTag === node.tag;
+  const Icon = tagIconMap[node.tag] || FallbackIcon;
+
+  return (
+    <div className="relative">
+      {depth > 0 && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-px bg-border"
+          style={{ left: `${depth * 12 - 8}px` }}
+        />
+      )}
+      <div
+        className={`flex items-center gap-1 py-1 cursor-pointer hover:bg-muted rounded-md ${
+          isSelected ? "bg-muted font-medium" : ""
+        }`}
+        style={{ paddingLeft: depth * 12 + 4 }}
+        onClick={() => onSelect(node.tag)}
+      >
+        {hasChildren && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            className="p-0.5"
+          >
+            {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        )}
+        {!hasChildren && <span className="w-4" />}
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-sm">{node.tag}</span>
+      </div>
+      {hasChildren && isOpen && (
+        <div>
+          {node.children.map((child, idx) => (
+            <TreeItem
+              key={idx}
+              node={child}
+              selectedTag={selectedTag}
+              onSelect={onSelect}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------
+// Draggable elements list
+// ------------------------------
 const elements = [
   { tag: "div", label: "Container" },
   { tag: "h1", label: "Heading 1" },
@@ -63,13 +211,15 @@ const elements = [
   { tag: "a", label: "Link" },
 ];
 
+// ------------------------------
+// Main Editor Component
+// ------------------------------
 export default function EditorPageUI() {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"elements" | "layerTree">("elements");
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
-  const [layerTreeTags, setLayerTreeTags] = useState<string[]>([]);
   const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [interactiveMode, setInteractiveMode] = useState(true);
 
@@ -102,14 +252,10 @@ module.exports = Header;`,
     }
   }, [files, setFiles]);
 
-  // Update layer tree when App.jsx changes
-  useEffect(() => {
-    const appCode = files?.["src/App.jsx"];
-    if (appCode) {
-      setLayerTreeTags(extractTags(appCode));
-    } else {
-      setLayerTreeTags([]);
-    }
+  // Compute JSX tree from App.jsx
+  const jsxTree = useMemo(() => {
+    const appCode = files?.["src/App.jsx"] || "";
+    return parseJsxToTree(appCode);
   }, [files]);
 
   // Global click capture to suppress interactive elements when interactiveMode is false
@@ -118,19 +264,15 @@ module.exports = Header;`,
 
     const handleCapture = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Check if click is inside preview container
       if (!previewRef.current?.contains(target)) return;
-      // Identify interactive elements
       const interactiveTags = ["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"];
       if (interactiveTags.includes(target.tagName)) {
         e.preventDefault();
         e.stopPropagation();
-        // Manually trigger selection
         const tag = target.tagName.toLowerCase();
         handleSelectElement(tag);
       }
     };
-    // Use capture phase to catch before React handlers
     document.addEventListener("click", handleCapture, true);
     return () => document.removeEventListener("click", handleCapture, true);
   }, [interactiveMode]);
@@ -158,7 +300,6 @@ module.exports = Header;`,
   };
 
   const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // In interactive mode, require Shift+click to select
     if (interactiveMode && !e.shiftKey) return;
     let target = e.target as HTMLElement;
     while (target && !target.tagName) {
@@ -177,7 +318,6 @@ module.exports = Header;`,
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -202,9 +342,8 @@ module.exports = Header;`,
         </div>
       </header>
 
-      {/* Main layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left sidebar (unchanged) */}
+        {/* Left sidebar */}
         <div className="relative flex-shrink-0">
           <div
             className={`border-r bg-muted/20 flex flex-col h-full transition-all duration-200 ease-in-out overflow-hidden ${
@@ -258,16 +397,13 @@ module.exports = Header;`,
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {layerTreeTags.map((tag) => (
-                        <div
-                          key={tag}
-                          className={`text-sm p-2 cursor-pointer hover:bg-muted rounded-md transition-colors ${
-                            selectedElement === tag ? "bg-muted font-medium" : ""
-                          }`}
-                          onClick={() => handleSelectElement(tag)}
-                        >
-                          &lt;{tag}&gt;
-                        </div>
+                      {jsxTree.map((node, idx) => (
+                        <TreeItem
+                          key={idx}
+                          node={node}
+                          selectedTag={selectedElement}
+                          onSelect={handleSelectElement}
+                        />
                       ))}
                     </div>
                   )}
@@ -324,14 +460,8 @@ module.exports = Header;`,
                 </button>
               </div>
               <div className="flex items-center gap-1 border-l pl-2">
-                <Label htmlFor="interactive-mode" className="text-xs text-muted-foreground">
-                  Interactive
-                </Label>
-                <Switch
-                  id="interactive-mode"
-                  checked={interactiveMode}
-                  onCheckedChange={setInteractiveMode}
-                />
+                <Label htmlFor="interactive-mode" className="text-xs text-muted-foreground">Interactive</Label>
+                <Switch id="interactive-mode" checked={interactiveMode} onCheckedChange={setInteractiveMode} />
               </div>
               <Button variant="outline" size="icon">
                 <FolderTree className="h-4 w-4" />
