@@ -71,7 +71,7 @@ import {
   useSelectedComponent,
 } from "@/store";
 import { ComponentType, WebsiteComponent, createComponent } from "@/types";
-import { ComponentRenderer } from "@/components/editor/renderers";
+import { RenderNode } from "@/components/editor/renderers";
 import Link from "next/link";
 
 // Component library items
@@ -685,7 +685,7 @@ export default function EditorPage() {
     if (currentPage) {
       pushHistory(currentPage);
     }
-    const newId = addComponent(type);
+    const newId = addComponent(createComponent(type));
     if (newId) {
       setSelectedComponent(newId);
     }
@@ -960,7 +960,7 @@ export default function EditorPage() {
                         onDelete={() => handleDelete(component.id)}
                         onDuplicate={() => handleDuplicate(component.id)}
                       >
-                        <ComponentRenderer component={component} />
+                        <RenderNode node={component} />
                       </SortableItem>
                     ))
                   ) : (
@@ -984,7 +984,7 @@ export default function EditorPage() {
                 <DragOverlay>
                   {activeComponent && (
                     <div className="opacity-70">
-                      <ComponentRenderer component={activeComponent} />
+                      <RenderNode node={activeComponent} />
                     </div>
                   )}
                 </DragOverlay>

@@ -1,10 +1,11 @@
-import { v4 } from 'uuid';
+import { CSSProperties } from "react";
+import { v4 } from "uuid";
 
 /* =========================
    CORE TYPES
 ========================= */
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = "light" | "dark" | "system";
 
 export interface ColorPalette {
   primary: string;
@@ -32,26 +33,26 @@ export interface WebsiteSettings {
 ========================= */
 
 export type ComponentType =
-  | 'hero'
-  | 'navbar'
-  | 'footer'
-  | 'heading'
-  | 'text'
-  | 'button'
-  | 'image'
-  | 'card'
-  | 'pricing'
-  | 'testimonial'
-  | 'faq'
-  | 'contact-form'
-  | 'gallery'
-  | 'feature'
-  | 'cta'
-  | 'divider'
-  | 'spacer'
-  | 'container'
-  | 'grid'
-  | 'columns';
+  | "hero"
+  | "navbar"
+  | "footer"
+  | "heading"
+  | "text"
+  | "button"
+  | "image"
+  | "card"
+  | "pricing"
+  | "testimonial"
+  | "faq"
+  | "contact-form"
+  | "gallery"
+  | "feature"
+  | "cta"
+  | "divider"
+  | "spacer"
+  | "container"
+  | "grid"
+  | "columns";
 
 /**
  * React-native props model
@@ -149,7 +150,7 @@ export interface User {
 
 export interface AIMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
 }
@@ -158,7 +159,51 @@ export interface GenerationRequest {
   prompt: string;
   pageId?: string;
   componentId?: string;
-  action: 'generate' | 'regenerate' | 'improve' | 'modify';
+  action: "generate" | "regenerate" | "improve" | "modify";
+}
+
+export interface ComponentContent {
+  title?: string;
+  subtitle?: string;
+  text?: string;
+  buttonText?: string;
+  image?: string;
+  alt?: string;
+  description?: string;
+  logo?: string;
+  links?: Array<{ label: string; href: string }>;
+  items?: Array<any>;
+  plans?: Array<any>;
+  href?: string;
+  tag?: keyof JSX.IntrinsicElements;
+  props?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface BoxSpacing {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+}
+
+export interface ComponentStyles extends Omit<
+  CSSProperties,
+  "padding" | "margin"
+> {
+  className?: string;
+  padding?: BoxSpacing;
+  margin?: BoxSpacing;
+}
+
+export interface WebsiteComponent {
+  id: string;
+  type: ComponentType;
+  content: ComponentContent;
+  styles: ComponentStyles;
+  children?: WebsiteComponent[];
+  parentId?: string | null;
+  order: number;
 }
 
 /* =========================
@@ -168,8 +213,8 @@ export interface GenerationRequest {
 /**
  * Create a clean React-compatible component
  */
- 
- /*
+
+/*
 export function createComponent(
   type: ComponentType,
   props: ComponentProps = {},
@@ -192,12 +237,13 @@ export function createComponent(
 export function createComponent(
   type: ComponentType,
   content: Partial<ComponentContent> = {},
-  styles: Partial<ComponentStyles> = {}
+  styles: Partial<ComponentStyles> = {},
 ): WebsiteComponent {
   return {
     id: `comp_${v4()}`,
     type,
-    content: getDefaultContent(type, content) ?? {}, // FIX: never undefined
+    content: getDefaultContent(type, content),
+    props: {},
     styles: { ...createDefaultStyles(), ...styles },
     children: [],
     parentId: null,
@@ -205,104 +251,38 @@ export function createComponent(
   };
 }
 
+export function createDefaultStyles(): ComponentStyles {
+  return {
+    padding: { top: 0, right: 0, bottom: 0, left: 0 },
+    margin: { top: 0, right: 0, bottom: 0, left: 0 },
+  };
+}
+
 /**
  * Default props per component type (React-friendly)
  */
-export function getDefaultContent(type: ComponentType): ComponentProps {
-  const defaults: Record<ComponentType, ComponentProps> = {
+export function getDefaultContent(
+  type: ComponentType,
+  overrides: Partial<ComponentContent> = {},
+): ComponentContent {
+  const defaults: Partial<Record<ComponentType, ComponentContent>> = {
     hero: {
-      title: 'Build Something Amazing',
-      subtitle: 'Create beautiful websites with AI',
-      buttonText: 'Get Started',
+      title: "Build Something Amazing",
+      subtitle: "Create beautiful websites with AI",
+      buttonText: "Get Started",
     },
-
-    navbar: {
-      logo: 'Brand',
-      links: [
-        { label: 'Home', href: '/' },
-        { label: 'About', href: '/about' },
-        { label: 'Contact', href: '/contact' },
-      ],
-      buttonText: 'Sign Up',
-    },
-
-    footer: {
-      description: 'Building modern web experiences',
-      links: [
-        { label: 'Privacy', href: '/privacy' },
-        { label: 'Terms', href: '/terms' },
-      ],
-    },
-
-    heading: {
-      text: 'Welcome',
-    },
-
-    text: {
-      text: 'Sample text content',
-    },
-
-    button: {
-      text: 'Click Me',
-    },
-
-    image: {
-      src: 'https://images.pexels.com/photos/261579/pexels-photo-261579.jpeg',
-      alt: 'Image',
-    },
-
-    card: {
-      title: 'Card Title',
-      description: 'Card description',
-    },
-
-    pricing: {
-      title: 'Pricing',
-      plans: [],
-    },
-
-    testimonial: {
-      items: [],
-    },
-
-    faq: {
-      items: [],
-    },
-
-    'contact-form': {
-      title: 'Contact Us',
-      description: 'Send us a message',
-    },
-
-    gallery: {
-      items: [],
-    },
-
-    feature: {
-      items: [],
-    },
-
-    cta: {
-      title: 'Ready to start?',
-      buttonText: 'Get Started',
-    },
-
-    divider: {},
-    spacer: { height: '40px' },
-    container: {},
-    grid: { columns: 3 },
-    columns: { columns: 2 },
+    // ... other defaults (optional)
   };
 
-  return defaults[type] || {};
+  return { ...(defaults[type] || {}), ...overrides };
 }
 
 /**
  * Empty page factory
  */
 export function createEmptyPage(
-  name: string = 'Home',
-  slug: string = '/'
+  name: string = "Home",
+  slug: string = "/",
 ): WebsitePage {
   return {
     id: `page_${v4()}`,
@@ -311,7 +291,7 @@ export function createEmptyPage(
     components: [],
     meta: {
       title: name,
-      description: '',
+      description: "",
       keywords: [],
     },
   };

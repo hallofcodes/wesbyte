@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { generateComponents } from "@/lib/ai";
 import { useWebsiteStore, useAIStore, useEditorStore } from "@/store";
-import { ComponentRenderer, RenderNode } from "@/components/editor/renderers";
+import { RenderNode } from "@/components/editor/renderers";
 import Link from "next/link";
 
 const examplePrompts = [
@@ -47,7 +47,7 @@ export default function BuilderPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-  
+
   const handleGenerate = useCallback(async () => {
   if (!prompt.trim() || isGenerating) return;
 
@@ -64,7 +64,7 @@ export default function BuilderPage() {
     if (!currentPageId) {
       createWebsite("My Website");
     }
-    
+
     addComponent(components)
     addMessage(
       "assistant",
@@ -370,7 +370,7 @@ export default function BuilderPage() {
     </div>
   </div>
 </div>
-     
+
         </div>
     </div>
   );
