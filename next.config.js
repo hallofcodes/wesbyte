@@ -1,5 +1,16 @@
 /** @type {import('next').NextConfig} */
-
+const ContentSecurityPolicy = `
+  default-src 'self';
+  base-uri 'self';
+  object-src 'none';
+  frame-ancestors 'none';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https://images.pexels.com;
+  font-src 'self' data: https://fonts.gstatic.com;
+  worker-src 'self' blob:;
+`.replace(/\n/g, '');
+/*
 const ContentSecurityPolicy = `
   default-src 'self';
 
@@ -13,6 +24,7 @@ const ContentSecurityPolicy = `
     'unsafe-inline'
     'unsafe-eval'
     https://www.gstatic.com;
+    https://cdn.jsdelivr.net; 
 
   style-src
     'self'
@@ -30,7 +42,7 @@ const ContentSecurityPolicy = `
 
   worker-src 'self' blob:;
 `.replace(/\n/g, "");
-
+*/
 const nextConfig = {
   images: { unoptimized: true },
   headers: async () => [

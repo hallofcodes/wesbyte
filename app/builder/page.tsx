@@ -17,11 +17,11 @@ import {
   Lightbulb,
   PanelLeft,
 } from "lucide-react";
-import { generateComponents, generateProject } from "@/lib/ai";
-import { useAIStore, useCurrentPage, useWebsiteStore } from "@/store";
+import { generateProject } from "@/lib/ai";
 import { useProjectStore } from "@/store/projectStore";
-import { RenderNode } from "@/components/editor/renderers";
 import { MultiFileSandbox } from "@/components/editor/MultiFileSandbox";
+import { DirectRenderer } from "@/components/editor/DirectRenderer";
+import { useAIStore } from "@/store";
 import Link from "next/link";
 
 const examplePrompts = [
@@ -37,14 +37,10 @@ export default function BuilderPage() {
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [devicePreview, setDevicePreview] = useState<
-    "desktop" | "tablet" | "mobile"
-  >("desktop");
+  const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
-  const currentPage = useCurrentPage();
-  const { currentPageId, createWebsite, addComponent } = useWebsiteStore();
   const { setFiles, files } = useProjectStore();
 
   useEffect(() => {
@@ -60,38 +56,9 @@ export default function BuilderPage() {
     addMessage("user", userPrompt);
 
     try {
-      const [projectResult, componentResult] = await Promise.allSettled([
-        generateProject(userPrompt),
-        generateComponents(userPrompt),
-      ]);
-
-      if (projectResult.status === "fulfilled") {
-        setFiles(projectResult.value);
-      }
-
-      if (componentResult.status === "fulfilled") {
-        if (!currentPageId) {
-          createWebsite("My Website");
-        }
-        addComponent(componentResult.value);
-      }
-
-      if (
-        projectResult.status === "fulfilled" &&
-        componentResult.status === "fulfilled"
-      ) {
-        addMessage("assistant", "Generated project files and components.");
-      } else if (projectResult.status === "fulfilled") {
-        addMessage("assistant", "Generated project with multiple files.");
-      } else if (componentResult.status === "fulfilled") {
-        addMessage(
-          "assistant",
-          "Generated components. Want changes or more sections?",
-        );
-      } else {
-        throw new Error("Both generation requests failed.");
-      }
-
+      const files = await generateProject(userPrompt);
+      setFiles(files);
+      addMessage("assistant", "Generated project with multiple files.");
       setShowSuggestions(false);
     } catch (error) {
       console.error(error);
@@ -99,55 +66,14 @@ export default function BuilderPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [
-    prompt,
-    isGenerating,
-    setIsGenerating,
-    addMessage,
-    setFiles,
-    currentPageId,
-    createWebsite,
-    addComponent,
-  ]);
+  }, [prompt, isGenerating, setIsGenerating, addMessage, setFiles]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
     setShowSuggestions(false);
   };
 
-  const renderPreviewContent = () => {
-    if (Object.keys(files).length > 0) {
-      return <MultiFileSandbox />;
-    }
-    return (
-      <>
-        {currentPage && currentPage.components.length > 0 ? (
-          <div className="min-h-full">
-            {currentPage?.components?.map((component) => (
-              <div key={component.id}>
-                <RenderNode node={component} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center p-12 text-center">
-            <div>
-              <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
-                <Wand2 className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">
-                Your website preview
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Describe what you want to build, and your website will appear
-                here.
-              </p>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  };
+  const renderPreviewContent = () => <DirectRenderer />;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -163,10 +89,7 @@ export default function BuilderPage() {
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <Link
-              href="/"
-              className="hidden md:flex items-center gap-2 shrink-0"
-            >
+            <Link href="/" className="flex items-center gap-2 shrink-0">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
@@ -174,10 +97,10 @@ export default function BuilderPage() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
-            {currentPage && currentPage.components.length > 0 && (
+            {Object.keys(files).length > 0 && (
               <Button onClick={() => router.push("/editor")} className="gap-2">
                 <ArrowRight className="h-4 w-4" />
-                <span className="hidden md:block">Continue to Editor</span>
+                Continue to Editor
               </Button>
             )}
           </div>
@@ -206,9 +129,7 @@ export default function BuilderPage() {
                 key={message.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
+                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
                   className={`max-w-[85%] rounded-lg px-4 py-2 ${
@@ -217,9 +138,7 @@ export default function BuilderPage() {
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">
-                    {message.content}
-                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </motion.div>
             ))}
@@ -264,9 +183,7 @@ export default function BuilderPage() {
                 placeholder="Describe your website..."
                 className="min-h-[100px] pr-12 resize-none"
                 disabled={isGenerating}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && !e.shiftKey && handleGenerate()
-                }
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleGenerate()}
               />
               <Button
                 size="icon"
@@ -311,9 +228,7 @@ export default function BuilderPage() {
         <div className="flex-1 flex flex-col min-w-0 h-full">
           {/* Top bar with device switcher */}
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-            <span className="text-sm font-medium text-muted-foreground">
-              Preview
-            </span>
+            <span className="text-sm font-medium text-muted-foreground">Preview</span>
             <div className="flex items-center border rounded-lg">
               {[
                 { device: "desktop", icon: Monitor },
@@ -344,14 +259,14 @@ export default function BuilderPage() {
                   devicePreview === "desktop"
                     ? "min(1200px, 100%)"
                     : devicePreview === "tablet"
-                      ? "min(820px, 100%)"
-                      : "min(390px, 100%)",
+                    ? "min(820px, 100%)"
+                    : "min(390px, 100%)",
                 aspectRatio:
                   devicePreview === "desktop"
                     ? "16 / 10"
                     : devicePreview === "tablet"
-                      ? "4 / 3"
-                      : "9 / 19.5",
+                    ? "4 / 3"
+                    : "9 / 19.5",
                 border:
                   devicePreview === "desktop"
                     ? "1px solid #e5e7eb"
@@ -360,11 +275,11 @@ export default function BuilderPage() {
                   devicePreview === "desktop"
                     ? "12px"
                     : devicePreview === "tablet"
-                      ? "28px"
-                      : "36px",
+                    ? "28px"
+                    : "36px",
               }}
             >
-              {/* Desktop chrome (optional) */}
+              {/* Desktop chrome */}
               {devicePreview === "desktop" && (
                 <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
                   <div className="flex gap-1.5">
@@ -388,9 +303,11 @@ export default function BuilderPage() {
                 </div>
               )}
 
-              {/* Content area */}
+              {/* Content area – the sandbox */}
               <div className="flex-1 overflow-y-auto">
+                <div className="preview">
                 {renderPreviewContent()}
+                </div>
               </div>
 
               {/* Phone/tablet bottom gesture bar */}

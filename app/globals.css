@@ -130,3 +130,10 @@
 .resize-handle {
   @apply w-2.5 h-2.5 bg-primary rounded-sm border border-white shadow-sm cursor-pointer;
 }
+
+/* Default browser button style for elements inside .preview */
+/* Make everything inside .preview use browser default styles */
+.preview,
+.preview * {
+  all: revert;
+}
