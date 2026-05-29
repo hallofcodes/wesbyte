@@ -55,7 +55,7 @@ interface WebsiteState {
   deletePage: (pageId: string) => void;
 
   // Component actions
-  addComponent: (type: ComponentType, parentId?: string | null, index?: number) => string;
+  addComponent: (component: WebsiteComponent, parentId?: string | null, index?: number) => string;
   updateComponent: (componentId: string, updates: Partial<WebsiteComponent>) => void;
   updateComponentStyles: (componentId: string, styles: Partial<ComponentStyles>) => void;
   deleteComponent: (componentId: string) => void;
@@ -236,7 +236,7 @@ export const useWebsiteStore = create<WebsiteState>()(
 
   return newComponentId;
 },
-      
+
       updateComponent: (componentId, updates) =>
         set((state) => {
           const currentPage = state.pages.find((p) => p.id === state.currentPageId);
