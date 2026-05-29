@@ -17,9 +17,10 @@ import {
   Lightbulb,
   PanelLeft,
 } from "lucide-react";
-import { generateComponents } from "@/lib/ai";
-import { useWebsiteStore, useAIStore, useEditorStore } from "@/store";
-import { ComponentRenderer, RenderNode } from "@/components/editor/renderers";
+import { generateProject } from "@/lib/ai";
+import { useProjectStore } from "@/store/projectStore";
+import { MultiFileSandbox } from "@/components/editor/MultiFileSandbox";
+import { useAIStore } from "@/store";
 import Link from "next/link";
 
 const examplePrompts = [
@@ -35,87 +36,43 @@ export default function BuilderPage() {
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { createWebsite, currentPageId, pages, addComponent } =
-    useWebsiteStore();
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
-  const { setDevicePreview, devicePreview } = useEditorStore();
-
-  const currentPage = pages.find((p) => p.id === currentPageId);
+  const { setFiles, files } = useProjectStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-  
+
   const handleGenerate = useCallback(async () => {
-  if (!prompt.trim() || isGenerating) return;
+    if (!prompt.trim() || isGenerating) return;
 
-  setIsGenerating(true);
+    setIsGenerating(true);
+    const userPrompt = prompt;
+    setPrompt("");
+    addMessage("user", userPrompt);
 
-  const userPrompt = prompt;
-  setPrompt("");
-
-  addMessage("user", userPrompt);
-
-  try {
-    const components = await generateComponents(userPrompt);
-
-    if (!currentPageId) {
-      createWebsite("My Website");
+    try {
+      const files = await generateProject(userPrompt);
+      setFiles(files);
+      addMessage("assistant", "Generated project with multiple files.");
+      setShowSuggestions(false);
+    } catch (error) {
+      console.error(error);
+      addMessage("assistant", "Error generating website. Please try again.");
+    } finally {
+      setIsGenerating(false);
     }
-    
-    addComponent(components)
-    addMessage(
-      "assistant",
-      `Generated components. Want changes or more sections?`
-    );
-    setShowSuggestions(false);
-  } catch (error) {
-    console.error(error);
-   addMessage("assistant", "Error generating website. Please try again.");
-  } finally {
-    setIsGenerating(false);
-  }
-}, [
-  prompt,
-  isGenerating,
-  setIsGenerating,
-  addMessage,
-  currentPageId,
-  createWebsite,
-  addComponent,
-]);
+  }, [prompt, isGenerating, setIsGenerating, addMessage, setFiles]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
     setShowSuggestions(false);
   };
 
-  const renderPreviewContent = () => (
-    <>
-      {currentPage && currentPage.components.length > 0 ? (
-        <div className="min-h-full">
-          {currentPage?.components?.map((component) => (
-            <RenderNode node={component}/>
-          ))}
-        </div>
-      ) : (
-        <div className="h-full flex items-center justify-center p-12 text-center">
-          <div>
-            <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
-              <Wand2 className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Your website preview</h3>
-            <p className="text-sm text-muted-foreground">
-              Describe what you want to build, and your website will appear
-              here.
-            </p>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  const renderPreviewContent = () => <MultiFileSandbox />;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -139,12 +96,12 @@ export default function BuilderPage() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
-            {currentPage && currentPage.components.length > 0 && (
-              <Button onClick={() => router.push("/editor")} className="gap-2">
-                <ArrowRight className="h-4 w-4" />
-                Continue to Editor
-              </Button>
-            )}
+            {Object.keys(files).length > 0 && (
+  <Button onClick={() => router.push("/editor")} className="gap-2">
+    <ArrowRight className="h-4 w-4" /> Continue to Editor
+  </Button>
+)}
+            
           </div>
         </div>
       </header>
@@ -157,13 +114,14 @@ export default function BuilderPage() {
         />
       )}
 
-      {/* Horizontal layout: side by side, scroll if needed */}
+      {/* Horizontal layout */}
       <div className="flex-1 flex flex-row overflow-auto min-h-0">
-        {/* Chat Panel - fixed width on desktop, sidebar on mobile */}
+        {/* Chat Panel */}
         <div
-          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${isChatOpen ? "translate-x-0" : "-translate-x-full"} md:flex md:shrink-0`}
+          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${
+            isChatOpen ? "translate-x-0" : "-translate-x-full"
+          } md:flex md:shrink-0`}
         >
-          {/* Scrollable messages + suggestions */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message) => (
               <motion.div
@@ -173,11 +131,13 @@ export default function BuilderPage() {
                 className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                  className={`max-w-[85%] rounded-lg px-4 py-2 ${
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">
-                    {message.content}
-                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </motion.div>
             ))}
@@ -213,7 +173,7 @@ export default function BuilderPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area at bottom of chat panel */}
+          {/* Input area */}
           <div className="border-t p-4 space-y-3 bg-background flex-shrink-0">
             <div className="relative">
               <Textarea
@@ -222,9 +182,7 @@ export default function BuilderPage() {
                 placeholder="Describe your website..."
                 className="min-h-[100px] pr-12 resize-none"
                 disabled={isGenerating}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && !e.shiftKey && handleGenerate()
-                }
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleGenerate()}
               />
               <Button
                 size="icon"
@@ -265,113 +223,102 @@ export default function BuilderPage() {
           </div>
         </div>
 
-        {/* Preview Panel - flexible width */}
-     {/* Preview Panel */}
-<div className="flex-1 flex flex-col min-w-0 h-full">
-  {/* Top bar */}
-  <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-    <span className="text-sm font-medium text-muted-foreground">
-      Preview
-    </span>
-
-    <div className="flex items-center border rounded-lg">
-      {[
-        { device: "desktop", icon: Monitor },
-        { device: "tablet", icon: Tablet },
-        { device: "mobile", icon: Smartphone },
-      ].map(({ device, icon: Icon }) => (
-        <button
-          key={device}
-          onClick={() => setDevicePreview(device as any)}
-          className={`p-2 ${
-            devicePreview === device
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted"
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-        </button>
-      ))}
-    </div>
-  </div>
-
-  {/* Center stage */}
-  <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
-    {/* DEVICE WRAPPER */}
-    <div
-      className="shadow-2xl bg-background overflow-hidden flex flex-col"
-      style={{
-        width:
-          devicePreview === "desktop"
-            ? "min(1200px, 100%)"
-            : devicePreview === "tablet"
-              ? "min(820px, 100%)"
-              : "min(390px, 100%)",
-
-        aspectRatio:
-          devicePreview === "desktop"
-            ? "16 / 10"
-            : devicePreview === "tablet"
-              ? "4 / 3"
-              : "9 / 19.5",
-
-        border:
-          devicePreview === "desktop"
-            ? "1px solid #e5e7eb"
-            : "10px solid #1f2937",
-
-        borderRadius:
-          devicePreview === "desktop"
-            ? "12px"
-            : devicePreview === "tablet"
-              ? "28px"
-              : "36px",
-      }}
-    >
-      {/* Desktop chrome */}
-      {devicePreview === "desktop" && (
-        <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
-          <div className="flex gap-1.5">
-            <div className="h-3 w-3 rounded-full bg-red-500" />
-            <div className="h-3 w-3 rounded-full bg-yellow-500" />
-            <div className="h-3 w-3 rounded-full bg-green-500" />
+        {/* Preview Panel */}
+        <div className="flex-1 flex flex-col min-w-0 h-full">
+          {/* Top bar with device switcher */}
+          <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
+            <span className="text-sm font-medium text-muted-foreground">Preview</span>
+            <div className="flex items-center border rounded-lg">
+              {[
+                { device: "desktop", icon: Monitor },
+                { device: "tablet", icon: Tablet },
+                { device: "mobile", icon: Smartphone },
+              ].map(({ device, icon: Icon }) => (
+                <button
+                  key={device}
+                  onClick={() => setDevicePreview(device as any)}
+                  className={`p-2 ${
+                    devicePreview === device
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex-1 text-center">
-            <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
-              <Sparkles className="h-3 w-3" />
-              Preview
+          {/* Center stage with device wrapper */}
+          <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
+            <div
+              className="shadow-2xl bg-background overflow-hidden flex flex-col"
+              style={{
+                width:
+                  devicePreview === "desktop"
+                    ? "min(1200px, 100%)"
+                    : devicePreview === "tablet"
+                    ? "min(820px, 100%)"
+                    : "min(390px, 100%)",
+                aspectRatio:
+                  devicePreview === "desktop"
+                    ? "16 / 10"
+                    : devicePreview === "tablet"
+                    ? "4 / 3"
+                    : "9 / 19.5",
+                border:
+                  devicePreview === "desktop"
+                    ? "1px solid #e5e7eb"
+                    : "10px solid #1f2937",
+                borderRadius:
+                  devicePreview === "desktop"
+                    ? "12px"
+                    : devicePreview === "tablet"
+                    ? "28px"
+                    : "36px",
+              }}
+            >
+              {/* Desktop chrome (optional) */}
+              {devicePreview === "desktop" && (
+                <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
+                  <div className="flex gap-1.5">
+                    <div className="h-3 w-3 rounded-full bg-red-500" />
+                    <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                    <div className="h-3 w-3 rounded-full bg-green-500" />
+                  </div>
+                  <div className="flex-1 text-center">
+                    <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
+                      <Sparkles className="h-3 w-3" />
+                      Preview
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Phone/tablet top notch */}
+              {(devicePreview === "mobile" || devicePreview === "tablet") && (
+                <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+                  <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
+                </div>
+              )}
+
+              {/* Content area – the sandbox */}
+              <div className="flex-1 overflow-y-auto">
+                {renderPreviewContent()}
+              </div>
+
+              {/* Phone/tablet bottom gesture bar */}
+              {(devicePreview === "mobile" || devicePreview === "tablet") && (
+                <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+                  <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
+                    <div className="h-1 w-12 rounded-full bg-gray-500/80" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
-
-      {/* PHONE + TABLET TOP CHROME */}
-      {(devicePreview === "mobile" || devicePreview === "tablet") && (
-        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
-          {/* optional top speaker notch line */}
-          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
-        </div>
-      )}
-
-      {/* CONTENT AREA */}
-      <div className="flex-1 overflow-y-auto">
-        {renderPreviewContent()}
       </div>
-
-      {/* PHONE + TABLET BOTTOM GESTURE BAR */}
-      {(devicePreview === "mobile" || devicePreview === "tablet") && (
-        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
-            <div className="h-1 w-12 rounded-full bg-gray-500/80" />
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-</div>
-     
-        </div>
     </div>
   );
 }
