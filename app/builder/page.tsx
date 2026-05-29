@@ -49,43 +49,43 @@ export default function BuilderPage() {
   }, [messages]);
 
   const handleGenerate = useCallback(async () => {
-  if (!prompt.trim() || isGenerating) return;
+    if (!prompt.trim() || isGenerating) return;
 
-  setIsGenerating(true);
+    setIsGenerating(true);
 
-  const userPrompt = prompt;
-  setPrompt("");
+    const userPrompt = prompt;
+    setPrompt("");
 
-  addMessage("user", userPrompt);
+    addMessage("user", userPrompt);
 
-  try {
-    const components = await generateComponents(userPrompt);
+    try {
+      const components = await generateComponents(userPrompt);
 
-    if (!currentPageId) {
-      createWebsite("My Website");
+      if (!currentPageId) {
+        createWebsite("My Website");
+      }
+
+      addComponent(components);
+      addMessage(
+        "assistant",
+        `Generated components. Want changes or more sections?`,
+      );
+      setShowSuggestions(false);
+    } catch (error) {
+      console.error(error);
+      addMessage("assistant", "Error generating website. Please try again.");
+    } finally {
+      setIsGenerating(false);
     }
-
-    addComponent(components)
-    addMessage(
-      "assistant",
-      `Generated components. Want changes or more sections?`
-    );
-    setShowSuggestions(false);
-  } catch (error) {
-    console.error(error);
-   addMessage("assistant", "Error generating website. Please try again.");
-  } finally {
-    setIsGenerating(false);
-  }
-}, [
-  prompt,
-  isGenerating,
-  setIsGenerating,
-  addMessage,
-  currentPageId,
-  createWebsite,
-  addComponent,
-]);
+  }, [
+    prompt,
+    isGenerating,
+    setIsGenerating,
+    addMessage,
+    currentPageId,
+    createWebsite,
+    addComponent,
+  ]);
 
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
@@ -97,7 +97,9 @@ export default function BuilderPage() {
       {currentPage && currentPage.components.length > 0 ? (
         <div className="min-h-full">
           {currentPage?.components?.map((component) => (
-            <RenderNode node={component}/>
+            <div key={component.id}>
+              <RenderNode node={component} />
+            </div>
           ))}
         </div>
       ) : (
@@ -131,7 +133,10 @@ export default function BuilderPage() {
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <Link href="/" className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/"
+              className="hidden md:flex items-center gap-2 shrink-0"
+            >
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
@@ -142,7 +147,7 @@ export default function BuilderPage() {
             {currentPage && currentPage.components.length > 0 && (
               <Button onClick={() => router.push("/editor")} className="gap-2">
                 <ArrowRight className="h-4 w-4" />
-                Continue to Editor
+                <span className="hidden md:block">Continue to Editor</span>
               </Button>
             )}
           </div>
@@ -165,7 +170,7 @@ export default function BuilderPage() {
         >
           {/* Scrollable messages + suggestions */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((message) => (
+            {messages.map((message, idx) => (
               <motion.div
                 key={message.id}
                 initial={{ opacity: 0, y: 10 }}
@@ -266,112 +271,111 @@ export default function BuilderPage() {
         </div>
 
         {/* Preview Panel - flexible width */}
-     {/* Preview Panel */}
-<div className="flex-1 flex flex-col min-w-0 h-full">
-  {/* Top bar */}
-  <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-    <span className="text-sm font-medium text-muted-foreground">
-      Preview
-    </span>
+        {/* Preview Panel */}
+        <div className="flex-1 flex flex-col min-w-0 h-full">
+          {/* Top bar */}
+          <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
+            <span className="text-sm font-medium text-muted-foreground">
+              Preview
+            </span>
 
-    <div className="flex items-center border rounded-lg">
-      {[
-        { device: "desktop", icon: Monitor },
-        { device: "tablet", icon: Tablet },
-        { device: "mobile", icon: Smartphone },
-      ].map(({ device, icon: Icon }) => (
-        <button
-          key={device}
-          onClick={() => setDevicePreview(device as any)}
-          className={`p-2 ${
-            devicePreview === device
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted"
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-        </button>
-      ))}
-    </div>
-  </div>
-
-  {/* Center stage */}
-  <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
-    {/* DEVICE WRAPPER */}
-    <div
-      className="shadow-2xl bg-background overflow-hidden flex flex-col"
-      style={{
-        width:
-          devicePreview === "desktop"
-            ? "min(1200px, 100%)"
-            : devicePreview === "tablet"
-              ? "min(820px, 100%)"
-              : "min(390px, 100%)",
-
-        aspectRatio:
-          devicePreview === "desktop"
-            ? "16 / 10"
-            : devicePreview === "tablet"
-              ? "4 / 3"
-              : "9 / 19.5",
-
-        border:
-          devicePreview === "desktop"
-            ? "1px solid #e5e7eb"
-            : "10px solid #1f2937",
-
-        borderRadius:
-          devicePreview === "desktop"
-            ? "12px"
-            : devicePreview === "tablet"
-              ? "28px"
-              : "36px",
-      }}
-    >
-      {/* Desktop chrome */}
-      {devicePreview === "desktop" && (
-        <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
-          <div className="flex gap-1.5">
-            <div className="h-3 w-3 rounded-full bg-red-500" />
-            <div className="h-3 w-3 rounded-full bg-yellow-500" />
-            <div className="h-3 w-3 rounded-full bg-green-500" />
+            <div className="flex items-center border rounded-lg">
+              {[
+                { device: "desktop", icon: Monitor },
+                { device: "tablet", icon: Tablet },
+                { device: "mobile", icon: Smartphone },
+              ].map(({ device, icon: Icon }) => (
+                <button
+                  key={device}
+                  onClick={() => setDevicePreview(device as any)}
+                  className={`p-2 ${
+                    devicePreview === device
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex-1 text-center">
-            <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
-              <Sparkles className="h-3 w-3" />
-              Preview
+          {/* Center stage */}
+          <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
+            {/* DEVICE WRAPPER */}
+            <div
+              className="shadow-2xl bg-background overflow-hidden flex flex-col"
+              style={{
+                width:
+                  devicePreview === "desktop"
+                    ? "min(1200px, 100%)"
+                    : devicePreview === "tablet"
+                      ? "min(820px, 100%)"
+                      : "min(390px, 100%)",
+
+                aspectRatio:
+                  devicePreview === "desktop"
+                    ? "16 / 10"
+                    : devicePreview === "tablet"
+                      ? "4 / 3"
+                      : "9 / 19.5",
+
+                border:
+                  devicePreview === "desktop"
+                    ? "1px solid #e5e7eb"
+                    : "10px solid #1f2937",
+
+                borderRadius:
+                  devicePreview === "desktop"
+                    ? "12px"
+                    : devicePreview === "tablet"
+                      ? "28px"
+                      : "36px",
+              }}
+            >
+              {/* Desktop chrome */}
+              {devicePreview === "desktop" && (
+                <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
+                  <div className="flex gap-1.5">
+                    <div className="h-3 w-3 rounded-full bg-red-500" />
+                    <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                    <div className="h-3 w-3 rounded-full bg-green-500" />
+                  </div>
+
+                  <div className="flex-1 text-center">
+                    <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
+                      <Sparkles className="h-3 w-3" />
+                      Preview
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PHONE + TABLET TOP CHROME */}
+              {(devicePreview === "mobile" || devicePreview === "tablet") && (
+                <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+                  {/* optional top speaker notch line */}
+                  <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
+                </div>
+              )}
+
+              {/* CONTENT AREA */}
+              <div className="flex-1 overflow-y-auto">
+                {renderPreviewContent()}
+              </div>
+
+              {/* PHONE + TABLET BOTTOM GESTURE BAR */}
+              {(devicePreview === "mobile" || devicePreview === "tablet") && (
+                <div className="h-4 bg-gray-800 flex-shrink-0 relative">
+                  <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
+                    <div className="h-1 w-12 rounded-full bg-gray-500/80" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
-
-      {/* PHONE + TABLET TOP CHROME */}
-      {(devicePreview === "mobile" || devicePreview === "tablet") && (
-        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
-          {/* optional top speaker notch line */}
-          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
-        </div>
-      )}
-
-      {/* CONTENT AREA */}
-      <div className="flex-1 overflow-y-auto">
-        {renderPreviewContent()}
       </div>
-
-      {/* PHONE + TABLET BOTTOM GESTURE BAR */}
-      {(devicePreview === "mobile" || devicePreview === "tablet") && (
-        <div className="h-4 bg-gray-800 flex-shrink-0 relative">
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
-            <div className="h-1 w-12 rounded-full bg-gray-500/80" />
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-</div>
-
-        </div>
     </div>
   );
 }

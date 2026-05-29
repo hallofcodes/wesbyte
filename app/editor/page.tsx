@@ -59,6 +59,7 @@ import {
   Box,
   PanelLeft,
   PanelRight,
+  X,
 } from "lucide-react";
 import {
   useWebsiteStore,
@@ -213,7 +214,11 @@ function SortableItem({
   );
 }
 
-function PropertiesPanel() {
+function PropertiesPanel({
+  setIsRightOpen,
+}: {
+  setIsRightOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
   const selectedComponent = useSelectedComponent();
   const { updateComponentStyles, updateComponent } = useWebsiteStore();
   const [activeTab, setActiveTab] = useState("style");
@@ -233,11 +238,16 @@ function PropertiesPanel() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
-        <h3 className="font-semibold capitalize">{selectedComponent.type}</h3>
-        <p className="text-xs text-muted-foreground mt-1">
-          ID: {selectedComponent.id.slice(0, 8)}...
-        </p>
+      <div className="p-4 border-b flex justify-between items-center">
+        <div>
+          <h3 className="font-semibold capitalize">{selectedComponent.type}</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            ID: {selectedComponent.id.slice(0, 8)}...
+          </p>
+        </div>
+        <button onClick={() => setIsRightOpen(false)} className="mt-2 text-xs hover:opacity-80">
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       <Tabs
@@ -1055,7 +1065,7 @@ export default function EditorPage() {
           } lg:flex`}
           ref={rightSidebarRef}
         >
-          <PropertiesPanel />
+          <PropertiesPanel setIsRightOpen={setIsRightOpen} />
         </div>
       </div>
     </div>
