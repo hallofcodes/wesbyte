@@ -1,6 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { StyleEditor, StyleValues } from "./StyleEditor";
+import { HexColorPicker } from "react-colorful";
+
+// Helper to convert style object to string for JSX
+function styleObjToString(styles: StyleValues): string {
+  const entries = Object.entries(styles).filter(([_, v]) => v && v !== "");
+  if (entries.length === 0) return "";
+  const inner = entries.map(([k, v]) => `${k}: ${typeof v === "string" && v.includes(" ") ? `"${v}"` : v}`).join(", ");
+  return `{ ${inner} }`;
+}
+
+function stringToStyleObj(str: string): StyleValues {
+  if (!str || str === "{}") return {};
+  try {
+    // Remove outer braces
+    const cleaned = str.slice(1, -1).trim();
+    const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
+    return parsed;
+  } catch {
+    return {};
+  }
+}
 
 export function PropertyPanel({
   selectedElement,
@@ -49,30 +71,21 @@ export function PropertyPanel({
   onAddCustomAttr,
   interactiveMode,
 }: any) {
-  const [stylesObj, setStylesObj] = useState<Record<string, any>>({});
+  const [stylesObj, setStylesObj] = useState<StyleValues>({});
+  const [showCustomModal, setShowCustomModal] = useState(false);
 
   useEffect(() => {
     if (!styleValue) {
       setStylesObj({});
       return;
     }
-    try {
-      const cleaned = styleValue.slice(1, -1).trim();
-      const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
-      setStylesObj(parsed);
-    } catch (e) {
-      setStylesObj({});
-    }
+    setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
 
-  const handleStyleChange = (newStyles: any) => {
+  const handleStyleChange = (newStyles: StyleValues) => {
     setStylesObj(newStyles);
-    const styleString = Object.entries(newStyles)
-      .filter(([_, v]) => v)
-      .map(([k, v]) => `${k}: ${typeof v === "string" ? `'${v}'` : v}`)
-      .join(", ");
-    const final = `{ ${styleString} }`;
-    onStyleChange(final);
+    const newStyleStr = styleObjToString(newStyles);
+    onStyleChange(newStyleStr);
   };
 
   if (!selectedElement) {
@@ -95,6 +108,7 @@ export function PropertyPanel({
 
   return (
     <div className="space-y-4">
+      {/* Basic attributes */}
       <div>
         <label className="text-sm font-medium">Tag</label>
         <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
@@ -131,6 +145,8 @@ export function PropertyPanel({
           />
         </div>
       )}
+
+      {/* Image specific */}
       {tagLower === "img" && (
         <>
           <div>
@@ -155,6 +171,8 @@ export function PropertyPanel({
           </div>
         </>
       )}
+
+      {/* Link specific */}
       {tagLower === "a" && (
         <>
           <div>
@@ -189,16 +207,16 @@ export function PropertyPanel({
           </div>
         </>
       )}
+
+      {/* Style Editor */}
       <div>
-        <label className="text-sm font-medium">Styles (object)</label>
-        <textarea
-          value={styleValue}
-          onChange={(e) => onStyleChange(e.target.value)}
-          placeholder='{ color: "red" }'
-          rows={3}
-          className="w-full p-2 border rounded-md font-mono text-sm bg-background"
-        />
+        <div className="flex justify-between items-center">
+          <label className="text-sm font-medium">Visual Styles</label>
+        </div>
+        <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
       </div>
+
+      {/* Width/Height (already in style editor, but we also keep them as top-level for quick access?) – optional, but kept for backward compatibility */}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-sm font-medium">Width</label>
@@ -221,6 +239,8 @@ export function PropertyPanel({
           />
         </div>
       </div>
+
+      {/* Input/textarea specific */}
       {(tagLower === "input" || tagLower === "textarea") && (
         <>
           <div>
@@ -263,6 +283,8 @@ export function PropertyPanel({
           </div>
         </>
       )}
+
+      {/* Tab index */}
       <div>
         <label className="text-sm font-medium">Tab Index</label>
         <input
@@ -273,6 +295,8 @@ export function PropertyPanel({
           className="w-full p-2 border rounded-md bg-background"
         />
       </div>
+
+      {/* ARIA attributes */}
       <div>
         <label className="text-sm font-medium">Aria Label</label>
         <input
@@ -292,6 +316,8 @@ export function PropertyPanel({
           className="h-4 w-4"
         />
       </div>
+
+      {/* Event handler */}
       <div>
         <label className="text-sm font-medium">On Click</label>
         <select
@@ -306,34 +332,62 @@ export function PropertyPanel({
           <option value="() => alert('Hello!')">Alert('Hello!')</option>
           <option value="() => console.log('Clicked')">Console.log('Clicked')</option>
           <option value="() => window.location.href = '/'">Navigate to /</option>
-          <option value="() => window.open('https://google.com', '_blank')">Open new tab (google.com)</option>
+          <option value="() => window.open('https://google.com', '_blank')">Open new tab</option>
         </select>
       </div>
+
+      {/* Custom Attribute button */}
       <div className="border-t pt-4">
-        <label className="text-sm font-medium">Custom Attribute</label>
-        <div className="flex gap-2 mt-1">
-          <input
-            type="text"
-            value={customAttrKey}
-            onChange={(e) => onCustomAttrKeyChange(e.target.value)}
-            placeholder="attribute name"
-            className="flex-1 p-2 border rounded-md bg-background"
-          />
-          <input
-            type="text"
-            value={customAttrValue}
-            onChange={(e) => onCustomAttrValueChange(e.target.value)}
-            placeholder="value"
-            className="flex-1 p-2 border rounded-md bg-background"
-          />
-          <button
-            onClick={onAddCustomAttr}
-            className="px-3 py-2 bg-primary text-primary-foreground rounded-md"
-          >
-            Add
-          </button>
-        </div>
+        <button
+          onClick={() => setShowCustomModal(true)}
+          className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm"
+        >
+          Add Custom Attribute
+        </button>
       </div>
+
+      {/* Custom Attribute Modal (native HTML dialog) */}
+      {showCustomModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg p-6 w-96">
+            <h3 className="text-lg font-semibold mb-4">Add Custom Attribute</h3>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={customAttrKey}
+                onChange={(e) => onCustomAttrKeyChange(e.target.value)}
+                placeholder="Attribute name"
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                type="text"
+                value={customAttrValue}
+                onChange={(e) => onCustomAttrValueChange(e.target.value)}
+                placeholder="Value"
+                className="w-full p-2 border rounded-md"
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setShowCustomModal(false)}
+                  className="px-3 py-1.5 border rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onAddCustomAttr();
+                    setShowCustomModal(false);
+                  }}
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
         Editing the first &lt;{selectedElement}&gt; in the file.
       </p>

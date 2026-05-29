@@ -2,6 +2,25 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import { StyleEditor, StyleValues } from "./StyleEditor";
+
+function styleObjToString(styles: StyleValues): string {
+  const entries = Object.entries(styles).filter(([_, v]) => v && v !== "");
+  if (entries.length === 0) return "";
+  const inner = entries.map(([k, v]) => `${k}: ${typeof v === "string" && v.includes(" ") ? `"${v}"` : v}`).join(", ");
+  return `{ ${inner} }`;
+}
+
+function stringToStyleObj(str: string): StyleValues {
+  if (!str || str === "{}") return {};
+  try {
+    const cleaned = str.slice(1, -1).trim();
+    const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
+    return parsed;
+  } catch {
+    return {};
+  }
+}
 
 export function MobilePropertySheet({
   isOpen,
@@ -47,30 +66,33 @@ export function MobilePropertySheet({
   onOnClickChange,
   interactiveMode,
 }: any) {
-  const [stylesObj, setStylesObj] = useState<Record<string, any>>({});
+  const [stylesObj, setStylesObj] = useState<StyleValues>({});
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customAttrKey, setCustomAttrKey] = useState("");
+  const [customAttrValue, setCustomAttrValue] = useState("");
 
   useEffect(() => {
     if (!styleValue) {
       setStylesObj({});
       return;
     }
-    try {
-      const cleaned = styleValue.slice(1, -1).trim();
-      const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
-      setStylesObj(parsed);
-    } catch (e) {
-      setStylesObj({});
-    }
+    setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
 
-  const handleStyleChange = (newStyles: any) => {
+  const handleStyleChange = (newStyles: StyleValues) => {
     setStylesObj(newStyles);
-    const styleString = Object.entries(newStyles)
-      .filter(([_, v]) => v)
-      .map(([k, v]) => `${k}: ${typeof v === "string" ? `'${v}'` : v}`)
-      .join(", ");
-    const final = `{ ${styleString} }`;
-    onStyleChange(final);
+    const newStyleStr = styleObjToString(newStyles);
+    onStyleChange(newStyleStr);
+  };
+
+  const handleAddCustomAttr = () => {
+    if (!selectedElement || !customAttrKey) return;
+    // This should call the parent's add custom attribute function
+    // We need to pass it from EditorPageContent. For now, we'll just close the modal
+    console.log("Add custom attribute", customAttrKey, customAttrValue);
+    setShowCustomModal(false);
+    setCustomAttrKey("");
+    setCustomAttrValue("");
   };
 
   if (!isOpen) return null;
@@ -87,14 +109,11 @@ export function MobilePropertySheet({
     <div className="fixed md:hidden left-0 right-0 bottom-0 z-50 transition-transform duration-300 ease-out translate-y-0">
       <div
         className="bg-background border-t rounded-t-xl shadow-lg overflow-auto"
-        style={{ height: "45vh", maxHeight: "45vh" }}
+        style={{ height: "55vh", maxHeight: "55vh" }}
       >
         <div className="sticky top-0 flex justify-between items-center p-3 border-b bg-background">
           <h3 className="font-semibold">Properties</h3>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md hover:bg-muted"
-          >
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -107,10 +126,13 @@ export function MobilePropertySheet({
             </p>
           ) : (
             <>
+              {/* Tag */}
               <div>
                 <label className="text-sm font-medium">Tag</label>
                 <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
               </div>
+
+              {/* Basic attributes */}
               <div>
                 <label className="text-sm font-medium">Class Name</label>
                 <input
@@ -131,6 +153,8 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
+
+              {/* Text content */}
               {!isVoid && textEditable && (
                 <div>
                   <label className="text-sm font-medium">Text Content</label>
@@ -143,6 +167,8 @@ export function MobilePropertySheet({
                   />
                 </div>
               )}
+
+              {/* Image specific */}
               {tagLower === "img" && (
                 <>
                   <div>
@@ -167,6 +193,8 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
+
+              {/* Link specific */}
               {tagLower === "a" && (
                 <>
                   <div>
@@ -201,16 +229,14 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
+
+              {/* Visual Style Editor */}
               <div>
-                <label className="text-sm font-medium">Styles (object)</label>
-                <textarea
-                  value={styleValue}
-                  onChange={(e) => onStyleChange(e.target.value)}
-                  placeholder='{ color: "red" }'
-                  rows={3}
-                  className="w-full p-2 border rounded-md font-mono text-sm bg-background"
-                />
+                <label className="text-sm font-medium">Visual Styles</label>
+                <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
               </div>
+
+              {/* Width/Height (optional, also available in style editor) */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-sm font-medium">Width</label>
@@ -233,6 +259,8 @@ export function MobilePropertySheet({
                   />
                 </div>
               </div>
+
+              {/* Input/textarea specific */}
               {(tagLower === "input" || tagLower === "textarea") && (
                 <>
                   <div>
@@ -275,6 +303,8 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
+
+              {/* Tab index */}
               <div>
                 <label className="text-sm font-medium">Tab Index</label>
                 <input
@@ -285,6 +315,8 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
+
+              {/* ARIA attributes */}
               <div>
                 <label className="text-sm font-medium">Aria Label</label>
                 <input
@@ -304,6 +336,8 @@ export function MobilePropertySheet({
                   className="h-4 w-4"
                 />
               </div>
+
+              {/* Event handler */}
               <div>
                 <label className="text-sm font-medium">On Click</label>
                 <select
@@ -318,13 +352,62 @@ export function MobilePropertySheet({
                   <option value="() => alert('Hello!')">Alert('Hello!')</option>
                   <option value="() => console.log('Clicked')">Console.log('Clicked')</option>
                   <option value="() => window.location.href = '/'">Navigate to /</option>
-                  <option value="() => window.open('https://google.com', '_blank')">Open new tab (google.com)</option>
+                  <option value="() => window.open('https://google.com', '_blank')">Open new tab</option>
                 </select>
+              </div>
+
+              {/* Custom Attribute button */}
+              <div className="border-t pt-4">
+                <button
+                  onClick={() => setShowCustomModal(true)}
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm w-full"
+                >
+                  Add Custom Attribute
+                </button>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* Custom Attribute Modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg p-6 w-80">
+            <h3 className="text-lg font-semibold mb-4">Add Custom Attribute</h3>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={customAttrKey}
+                onChange={(e) => setCustomAttrKey(e.target.value)}
+                placeholder="Attribute name"
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                type="text"
+                value={customAttrValue}
+                onChange={(e) => setCustomAttrValue(e.target.value)}
+                placeholder="Value"
+                className="w-full p-2 border rounded-md"
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setShowCustomModal(false)}
+                  className="px-3 py-1.5 border rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddCustomAttr}
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

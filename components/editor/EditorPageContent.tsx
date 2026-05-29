@@ -20,6 +20,16 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Globe, Sparkles } from "lucide-react";
 import NextLink from "next/link";
 
+const handleAddCustomAttr = () => {
+  if (!selectedElement) return;
+  const appCode = files?.["src/App.jsx"];
+  if (!appCode) return;
+  const newCode = setAttributeForTag(appCode, selectedElement, customAttrKey, customAttrValue);
+  updateFileContent("src/App.jsx", newCode);
+  setCustomAttrKey("");
+  setCustomAttrValue("");
+};
+
 const mockFiles = {
   "src/App.jsx": `const Header = require('src/Header.jsx');
 function App() {
