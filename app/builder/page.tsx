@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Sparkles,
   Wand2,
@@ -16,10 +17,10 @@ import {
   RefreshCw,
   Lightbulb,
   PanelLeft,
+  FolderTree
 } from "lucide-react";
 import { generateProject } from "@/lib/ai";
 import { useProjectStore } from "@/store/projectStore";
-import { MultiFileSandbox } from "@/components/editor/MultiFileSandbox";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
 import { useAIStore } from "@/store";
 import Link from "next/link";
@@ -33,6 +34,9 @@ const examplePrompts = [
 ];
 
 export default function BuilderPage() {
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
+  const [editContent, setEditContent] = useState("");
+
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -41,7 +45,8 @@ export default function BuilderPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
-  const { setFiles, files } = useProjectStore();
+  
+  const { files, selectedFilePath, setSelectedFilePath, updateFileContent, setFiles } = useProjectStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,7 +72,17 @@ export default function BuilderPage() {
       setIsGenerating(false);
     }
   }, [prompt, isGenerating, setIsGenerating, addMessage, setFiles]);
+  const handleSelectFile = (path: string) => {
+  setSelectedFilePath(path);
+  setEditContent(files[path]);
+};
 
+const handleSaveFile = () => {
+  if (selectedFilePath && editContent !== files[selectedFilePath]) {
+    updateFileContent(selectedFilePath, editContent);
+  }
+  setIsFileTreeOpen(false);
+};
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
     setShowSuggestions(false);
@@ -228,28 +243,38 @@ export default function BuilderPage() {
         <div className="flex-1 flex flex-col min-w-0 h-full">
           {/* Top bar with device switcher */}
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-            <span className="text-sm font-medium text-muted-foreground">Preview</span>
-            <div className="flex items-center border rounded-lg">
-              {[
-                { device: "desktop", icon: Monitor },
-                { device: "tablet", icon: Tablet },
-                { device: "mobile", icon: Smartphone },
-              ].map(({ device, icon: Icon }) => (
-                <button
-                  key={device}
-                  onClick={() => setDevicePreview(device as any)}
-                  className={`p-2 ${
-                    devicePreview === device
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
-          </div>
-
+  <span className="text-sm font-medium text-muted-foreground">Preview</span>
+  <div className="flex items-center gap-2">
+    {/* Device switcher group */}
+    <div className="flex items-center border rounded-lg overflow-hidden">
+      {[
+        { device: "desktop", icon: Monitor },
+        { device: "tablet", icon: Tablet },
+        { device: "mobile", icon: Smartphone },
+      ].map(({ device, icon: Icon }) => (
+        <button
+          key={device}
+          onClick={() => setDevicePreview(device as any)}
+          className={`p-2 ${
+            devicePreview === device
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted"
+          }`}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      ))}
+    </div>
+    {/* File Tree button – separate component */}
+    <button
+  onClick={() => setIsFileTreeOpen(true)}
+  className="p-2 rounded-lg border border-dashed hover:bg-muted flex items-center gap-1.5 transition-colors"
+>
+  <FolderTree className="h-4 w-4" />
+  <span className="hidden sm:inline text-sm">Files</span>
+</button>
+  </div>
+</div>
           {/* Center stage with device wrapper */}
           <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
             <div
@@ -320,8 +345,61 @@ export default function BuilderPage() {
               )}
             </div>
           </div>
-        </div>
+       </div>
       </div>
+      {/* File Tree Sheet */}
+<Sheet open={isFileTreeOpen} onOpenChange={setIsFileTreeOpen}>
+  <SheetContent side="right" className="w-[90vw] sm:w-[700px] p-0 flex flex-col">
+    <SheetHeader className="p-4 border-b">
+      <SheetTitle>Project Files</SheetTitle>
+    </SheetHeader>
+    <div className="flex flex-1 overflow-hidden">
+      {/* File list sidebar */}
+      <div className="w-1/3 border-r overflow-auto p-2">
+        <h4 className="text-sm font-medium mb-2 px-2">Files</h4>
+        <ul className="space-y-1">
+          {Object.keys(files).map((path) => (
+            <li
+              key={path}
+              className={`text-sm p-2 rounded-md cursor-pointer hover:bg-muted ${
+                selectedFilePath === path ? "bg-muted font-medium" : ""
+              }`}
+              onClick={() => handleSelectFile(path)}
+            >
+              {path}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {/* Editor area */}
+      <div className="flex-1 flex flex-col p-4 overflow-auto">
+        {selectedFilePath ? (
+          <>
+            <div className="text-sm text-muted-foreground mb-2">
+              {selectedFilePath}
+            </div>
+            <Textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="flex-1 font-mono text-sm"
+              style={{ minHeight: "300px" }}
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setIsFileTreeOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveFile}>Save Changes</Button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center text-muted-foreground mt-8">
+            Select a file to edit
+          </div>
+        )}
+      </div>
+    </div>
+  </SheetContent>
+</Sheet>
     </div>
   );
 }
