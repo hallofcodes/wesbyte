@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,7 +21,6 @@ import {
   DragOverlay,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -51,7 +50,6 @@ import {
   Layout,
   Grid,
   FileText,
-  MessageSquare,
   DollarSign,
   Users,
   HelpCircle,
@@ -59,7 +57,6 @@ import {
   Star,
   ArrowRight,
   Box,
-  Palette,
   PanelLeft,
   PanelRight,
 } from "lucide-react";
@@ -176,7 +173,11 @@ function SortableItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+      className={`group relative ${
+        isSelected
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : ""
+      }`}
     >
       <div
         {...attributes}
@@ -639,8 +640,7 @@ export default function EditorPage() {
     setSidebarTab,
   } = useEditorStore();
 
-  const { undo, redo, canUndo, canRedo, pushHistory, clearHistory } =
-    useHistoryStore();
+  const { undo, redo, canUndo, canRedo, pushHistory } = useHistoryStore();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -653,6 +653,48 @@ export default function EditorPage() {
     useState<WebsiteComponent | null>(null);
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
+
+  const headerRef = useRef<HTMLDivElement>(null);
+  const leftSidebarRef = useRef<HTMLDivElement>(null);
+  const rightSidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+
+      const inHeader = headerRef.current?.contains(target);
+      const inLeft = leftSidebarRef.current?.contains(target);
+      const inRight = rightSidebarRef.current?.contains(target);
+
+      if (inHeader || inLeft || inRight) {
+        setIsEditorFocused(false);
+      } else {
+        setIsEditorFocused(true);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  useEffect(() => {
+    if (!isLeftOpen && !isRightOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      const inLeft = leftSidebarRef.current?.contains(target);
+      const inRight = rightSidebarRef.current?.contains(target);
+
+      if (!inLeft && !inRight) {
+        setIsLeftOpen(false);
+        setIsRightOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isLeftOpen, isRightOpen]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -731,7 +773,6 @@ export default function EditorPage() {
     mobile: "w-[375px] max-w-full",
   };
 
-  // Redirect to builder if no page exists
   useEffect(() => {
     if (!currentPage && !useWebsiteStore.getState().currentPageId) {
       router.push("/builder");
@@ -740,8 +781,10 @@ export default function EditorPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
-      <header className="border-b flex justify-center lg:justify-between px-4 h-14">
+      <header
+        ref={headerRef}
+        className="border-b flex justify-center lg:justify-between px-4 h-14"
+      >
         <div className="hidden lg:flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
@@ -756,23 +799,32 @@ export default function EditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setIsLeftOpen(true)}
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setIsRightOpen(true)}
-          >
-            <PanelRight className="h-4 w-4" />
-          </Button>
-          {/* Undo/Redo */}
+          <div className="flex lg:hidden items-center border rounded-lg">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-none"
+              onClick={() => {
+                setIsLeftOpen(true);
+                setIsRightOpen(false);
+              }}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-none"
+              onClick={() => {
+                setIsRightOpen(true);
+                setIsLeftOpen(false);
+              }}
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+          </div>
+
           <div className="flex items-center border rounded-lg">
             <Button
               variant="ghost"
@@ -795,7 +847,6 @@ export default function EditorPage() {
             </Button>
           </div>
 
-          {/* Device Preview */}
           <div className="hidden md:flex items-center border rounded-lg">
             <button
               onClick={() => setDevicePreview("desktop")}
@@ -859,9 +910,11 @@ export default function EditorPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
         <div
-          className={`fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${isLeftOpen ? "translate-x-0" : "-translate-x-full"} lg:flex`}
+          className={`fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
+            isLeftOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:flex`}
+          ref={leftSidebarRef}
         >
           <Tabs
             value={sidebarTab}
@@ -932,8 +985,11 @@ export default function EditorPage() {
           </Tabs>
         </div>
 
-        {/* Canvas */}
-        <div className="flex-1 overflow-auto bg-muted/30">
+        <div
+          className="flex-1 overflow-auto bg-muted/30"
+          onMouseDown={() => setIsEditorFocused(true)}
+          onTouchStart={() => setIsEditorFocused(true)}
+        >
           <div className="p-8 flex justify-center">
             <motion.div
               layout
@@ -993,9 +1049,11 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* Right Sidebar - Properties */}
         <div
-          className={`fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-80 lg:translate-x-0 ${isRightOpen ? "translate-x-0" : "translate-x-full"} lg:flex`}
+          className={`fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-80 lg:translate-x-0 ${
+            isRightOpen ? "translate-x-0" : "translate-x-full"
+          } lg:flex`}
+          ref={rightSidebarRef}
         >
           <PropertiesPanel />
         </div>
