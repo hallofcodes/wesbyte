@@ -10,8 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/generator": "^7.29.7",
+    "@babel/parser": "^7.29.7",
     "@babel/plugin-transform-modules-commonjs": "^7.29.7",
     "@babel/standalone": "^7.29.7",
+    "@babel/traverse": "^7.29.7",
+    "@babel/types": "^7.29.7",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -66,6 +70,8 @@
     "postcss": "8.4.30",
     "react": "18.2.0",
     "react-day-picker": "^8.10.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "18.2.0",
     "react-hook-form": "^7.53.0",
     "react-resizable-panels": "^2.1.3",

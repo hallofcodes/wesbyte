@@ -1,1073 +1,511 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
+import { DndProvider } from "react-dnd";
+import * as parser from "@babel/parser";
+import traverse from "@babel/traverse";
+import generate from "@babel/generator";
+import * as t from "@babel/types";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Sparkles,
+  ArrowLeft,
   Monitor,
   Tablet,
   Smartphone,
-  Undo,
-  Redo,
-  Save,
+  FolderTree,
   Eye,
-  Settings,
-  Layers,
-  Component,
-  Plus,
-  Trash2,
-  Copy,
+  Code,
   Move,
-  ChevronRight,
-  ChevronDown,
   Type,
-  Image as ImageIcon,
-  Layout,
-  Grid,
-  FileText,
-  DollarSign,
-  Users,
-  HelpCircle,
-  Phone,
-  Star,
-  ArrowRight,
-  Box,
-  PanelLeft,
-  PanelRight,
-  X,
+  Heading1,
+  Heading2,
+  Heading3,
+  AlignLeft,
+  Square,
+  Image,
+  Input as InputIcon,
+  Link as LinkIcon,
 } from "lucide-react";
-import {
-  useWebsiteStore,
-  useEditorStore,
-  useHistoryStore,
-  useCurrentPage,
-  useSelectedComponent,
-} from "@/store";
-import { ComponentType, WebsiteComponent, createComponent } from "@/types";
-import { RenderNode } from "@/components/editor/renderers";
-import Link from "next/link";
+import { useProjectStore } from "@/store/projectStore";
+import { DirectRenderer } from "@/components/editor/DirectRenderer";
+import NextLink from "next/link";
 
-// Component library items
-const componentLibrary: Array<{
-  type: ComponentType;
-  name: string;
-  icon: React.ComponentType<{ className?: string }>;
-  category: string;
-}> = [
-  { type: "hero", name: "Hero", icon: Layout, category: "Sections" },
-  { type: "navbar", name: "Navbar", icon: Layout, category: "Navigation" },
-  { type: "footer", name: "Footer", icon: Layout, category: "Navigation" },
-  { type: "feature", name: "Features", icon: Star, category: "Sections" },
-  { type: "pricing", name: "Pricing", icon: DollarSign, category: "Sections" },
-  {
-    type: "testimonial",
-    name: "Testimonials",
-    icon: Users,
-    category: "Sections",
-  },
-  { type: "faq", name: "FAQ", icon: HelpCircle, category: "Sections" },
-  {
-    type: "contact-form",
-    name: "Contact Form",
-    icon: Phone,
-    category: "Forms",
-  },
-  { type: "gallery", name: "Gallery", icon: ImageIcon, category: "Media" },
-  {
-    type: "cta",
-    name: "Call to Action",
-    icon: ArrowRight,
-    category: "Sections",
-  },
-  { type: "heading", name: "Heading", icon: Type, category: "Basic" },
-  { type: "text", name: "Text Block", icon: FileText, category: "Basic" },
-  { type: "button", name: "Button", icon: Box, category: "Basic" },
-  { type: "image", name: "Image", icon: ImageIcon, category: "Media" },
-  { type: "card", name: "Card", icon: Layout, category: "Basic" },
-  { type: "divider", name: "Divider", icon: FileText, category: "Layout" },
-  { type: "spacer", name: "Spacer", icon: FileText, category: "Layout" },
-  { type: "columns", name: "Columns", icon: Grid, category: "Layout" },
-];
-
-function ComponentLibraryItem({
-  item,
-  onAdd,
-}: {
-  item: (typeof componentLibrary)[0];
-  onAdd: () => void;
-}) {
-  return (
-    <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onAdd}
-      className="w-full flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted transition-colors text-left"
-    >
-      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-        <item.icon className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="text-sm font-medium">{item.name}</p>
-        <p className="text-xs text-muted-foreground">{item.category}</p>
-      </div>
-      <Plus className="h-4 w-4 ml-auto text-muted-foreground" />
-    </motion.button>
-  );
+// ------------------------------
+// Helper: parse JSX to AST
+// ------------------------------
+function parseJSX(jsxString: string) {
+  return parser.parse(jsxString, {
+    sourceType: "module",
+    plugins: ["jsx", "typescript"],
+  });
 }
 
-function SortableItem({
-  component,
-  isSelected,
-  onSelect,
-  onDelete,
-  onDuplicate,
-  children,
-}: {
-  component: WebsiteComponent;
-  isSelected: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  children?: React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: component.id });
+// ------------------------------
+// Helper: generate JSX from AST
+// ------------------------------
+function generateJSX(ast: any): string {
+  const output = generate(ast, { retainLines: false, compact: false });
+  return output.code;
+}
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
+// ------------------------------
+// AST mutation functions
+// ------------------------------
+function findAppComponent(ast: any): t.FunctionDeclaration | t.FunctionExpression | t.ArrowFunctionExpression | null {
+  let appNode = null;
+  traverse(ast, {
+    ExportDefaultDeclaration(path) {
+      const decl = path.node.declaration;
+      if (t.isFunctionDeclaration(decl) && decl.id?.name === "App") {
+        appNode = decl;
+      } else if (t.isArrowFunctionExpression(decl) || t.isFunctionExpression(decl)) {
+        appNode = decl;
+      }
+    },
+    FunctionDeclaration(path) {
+      if (path.node.id?.name === "App") {
+        appNode = path.node;
+      }
+    },
+  });
+  return appNode;
+}
+
+function getReturnStatement(body: any): t.ReturnStatement | null {
+  // body is a BlockStatement (or potentially a Program)
+  const statements = body.body || (Array.isArray(body) ? body : []);
+  for (const stmt of statements) {
+    if (t.isReturnStatement(stmt)) return stmt;
+    // Recursively search inside nested blocks (if any)
+    if (t.isBlockStatement(stmt)) {
+      const found = getReturnStatement(stmt);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function insertElementAtIndex(parentElement: t.JSXElement, newElement: t.JSXElement, index: number) {
+  const children = parentElement.children;
+  if (!children) return;
+  if (index < 0) index = 0;
+  if (index > children.length) index = children.length;
+  children.splice(index, 0, t.jsxExpressionContainer(newElement));
+}
+
+function updateAttribute(jsxElement: t.JSXElement, attrName: string, attrValue: any) {
+  const attributes = jsxElement.openingElement.attributes;
+  const existingAttr = attributes.find((attr: any) => t.isJSXAttribute(attr) && attr.name.name === attrName);
+  if (existingAttr && t.isJSXAttribute(existingAttr)) {
+    existingAttr.value = t.stringLiteral(attrValue);
+  } else {
+    attributes.push(t.jsxAttribute(t.jsxIdentifier(attrName), t.stringLiteral(attrValue)));
+  }
+}
+
+function createJSXElement(tag: string, text?: string): t.JSXElement {
+  const opening = t.jsxOpeningElement(t.jsxIdentifier(tag), [], false);
+  const closing = t.jsxClosingElement(t.jsxIdentifier(tag));
+  const children = text ? [t.jsxText(text)] : [];
+  return t.jsxElement(opening, closing, children, false);
+}
+
+// ------------------------------
+// Palette component (uses useDrop inside DndProvider)
+// ------------------------------
+function Palette({ onInsert }: { onInsert: (tag: string, defaultText: string) => void }) {
+  const [{ isOver }, drop] = useDrop(() => ({
+    accept: "element",
+    drop: (item: { tag: string; defaultText: string }) => {
+      onInsert(item.tag, item.defaultText);
+    },
+    collect: (monitor) => ({ isOver: !!monitor.isOver() }),
+  }));
+
+  const paletteItems = [
+    { tag: "div", label: "Container", defaultText: "New Container" },
+    { tag: "h1", label: "Heading 1", defaultText: "Heading 1" },
+    { tag: "h2", label: "Heading 2", defaultText: "Heading 2" },
+    { tag: "h3", label: "Heading 3", defaultText: "Heading 3" },
+    { tag: "p", label: "Paragraph", defaultText: "Lorem ipsum..." },
+    { tag: "button", label: "Button", defaultText: "Button" },
+    { tag: "img", label: "Image", defaultText: "" },
+    { tag: "input", label: "Input", defaultText: "" },
+    { tag: "a", label: "Link", defaultText: "Link text" },
+  ];
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group relative ${
-        isSelected
-          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-          : ""
-      }`}
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute left-0 top-0 w-full p-2 flex items-center justify-between bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-move"
-      >
-        <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
+    <div className="p-3 border-b">
+      <h3 className="font-semibold mb-2">Elements</h3>
+      <div ref={drop} className={`grid grid-cols-2 gap-2 p-2 rounded ${isOver ? "bg-primary/10" : ""}`}>
+        {paletteItems.map((item) => (
+          <div
+            key={item.tag}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", JSON.stringify({ tag: item.tag, defaultText: item.defaultText }));
             }}
-            className="p-1 rounded hover:bg-destructive/20"
+            className="flex flex-col items-center gap-1 p-2 border rounded-md cursor-grab hover:bg-muted transition-colors"
           >
-            <Trash2 className="h-3 w-3" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate();
-            }}
-            className="p-1 rounded hover:bg-muted"
-          >
-            <Copy className="h-3 w-3" />
-          </button>
-        </div>
-        <Move className="h-4 w-4 text-muted-foreground" />
-      </div>
-      <div onClick={onSelect} className="cursor-pointer">
-        {children}
+            <span className="text-xs font-mono">&lt;{item.tag}&gt;</span>
+            <span className="text-xs">{item.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
+// ------------------------------
+// Main Editor Component
+// ------------------------------
+export default function EditorPage() {
+  const router = useRouter();
+  const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [selectedNodePath, setSelectedNodePath] = useState<string>("");
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [ast, setAst] = useState<any>(null);
+  const [editingMode, setEditingMode] = useState<"visual" | "code">("visual");
+  const [codeEditorContent, setCodeEditorContent] = useState("");
 
-function PropertiesPanel({
-  setIsRightOpen,
-}: {
-  setIsRightOpen: React.Dispatch<React.SetStateAction<boolean>>;
-}) {
-  const selectedComponent = useSelectedComponent();
-  const { updateComponentStyles, updateComponent } = useWebsiteStore();
-  const [activeTab, setActiveTab] = useState("style");
+  const { files, selectedFilePath, setSelectedFilePath, updateFileContent } = useProjectStore();
 
-  if (!selectedComponent) {
+  // Load current App.jsx into AST
+  useEffect(() => {
+    const appCode = files["src/App.jsx"];
+    if (!appCode) return;
+    setCodeEditorContent(appCode);
+    try {
+      const newAst = parseJSX(appCode);
+      setAst(newAst);
+    } catch (err) {
+      console.error("Failed to parse JSX", err);
+    }
+  }, [files]);
+
+  // Save AST back to store
+  const saveAstToStore = useCallback(() => {
+    if (!ast) return;
+    const newCode = generateJSX(ast);
+    updateFileContent("src/App.jsx", newCode);
+    setCodeEditorContent(newCode);
+  }, [ast, updateFileContent]);
+
+  // Manual code edit save
+  const handleCodeSave = () => {
+    try {
+      const newAst = parseJSX(codeEditorContent);
+      setAst(newAst);
+      updateFileContent("src/App.jsx", codeEditorContent);
+    } catch (err) {
+      console.error("Invalid JSX", err);
+      alert("Invalid JSX syntax");
+    }
+  };
+
+  // Insert element at the end of App's root div
+  const insertElement = (tag: string, text?: string) => {
+    if (!ast) return;
+    const appNode = findAppComponent(ast);
+    if (!appNode) return;
+    const returnStmt = getReturnStatement(appNode.body);
+    if (!returnStmt || !t.isJSXElement(returnStmt.argument)) return;
+    const rootElement = returnStmt.argument;
+    const newElement = createJSXElement(tag, text);
+    insertElementAtIndex(rootElement, newElement, rootElement.children.length);
+    saveAstToStore();
+  };
+
+  // Delete selected element (simplified – you can improve)
+  const deleteSelectedElement = () => {
+    if (!selectedNode || !ast) return;
+    console.warn("Delete not fully implemented without parent path");
+    // For a production version, you need to find the parent and remove the child.
+  };
+
+  // Update attribute of selected element
+  const updateSelectedAttribute = (attr: string, value: string) => {
+    if (!selectedNode || !t.isJSXElement(selectedNode)) return;
+    updateAttribute(selectedNode, attr, value);
+    saveAstToStore();
+  };
+
+  // Layer tree renderer
+  const renderLayerTree = (jsxElement: t.JSXElement, depth = 0): React.ReactNode => {
+    const tag = jsxElement.openingElement.name.name;
+    const children = jsxElement.children.filter((c: any) => t.isJSXElement(c) || t.isJSXExpressionContainer(c));
     return (
-      <div className="h-full flex items-center justify-center p-6">
+      <div key={Math.random()} style={{ marginLeft: depth * 16 }}>
+        <div
+          className={`p-1 cursor-pointer hover:bg-muted rounded ${selectedNode === jsxElement ? "bg-muted" : ""}`}
+          onClick={() => setSelectedNode(jsxElement)}
+        >
+          &lt;{tag}&gt;
+        </div>
+        {children.map((child: any) => {
+          if (t.isJSXElement(child)) return renderLayerTree(child, depth + 1);
+          if (t.isJSXExpressionContainer(child) && t.isJSXElement(child.expression)) return renderLayerTree(child.expression, depth + 1);
+          return null;
+        })}
+      </div>
+    );
+  };
+
+  // Extract root element for layer tree
+  let rootElement: t.JSXElement | null = null;
+  if (ast) {
+    const appNode = findAppComponent(ast);
+    if (appNode && t.isFunctionDeclaration(appNode)) {
+      const returnStmt = getReturnStatement(appNode.body);
+      if (returnStmt && t.isJSXElement(returnStmt.argument)) rootElement = returnStmt.argument;
+    }
+  }
+
+  // Redirect if no project
+  if (!files || Object.keys(files).length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="text-center">
-          <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">
-            Select a component to edit its properties
-          </p>
+          <h1 className="text-2xl font-bold mb-2">No Project Found</h1>
+          <p className="text-muted-foreground mb-4">Generate a website in the builder first.</p>
+          <Button onClick={() => router.push("/builder")}>Go to Builder</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b flex justify-between items-center">
-        <div>
-          <h3 className="font-semibold capitalize">{selectedComponent.type}</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            ID: {selectedComponent.id.slice(0, 8)}...
-          </p>
-        </div>
-        <button onClick={() => setIsRightOpen(false)} className="mt-2 text-xs hover:opacity-80">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <Tabs
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex-1 flex flex-col"
-      >
-        <TabsList className="mx-4 mt-2">
-          <TabsTrigger value="style" className="flex-1">
-            Style
-          </TabsTrigger>
-          <TabsTrigger value="content" className="flex-1">
-            Content
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent
-          value="style"
-          className="flex-1 overflow-auto p-4 space-y-4"
-        >
-          {/* Padding */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">
-              Padding (px)
-            </Label>
-            <div className="grid grid-cols-4 gap-2">
-              {(["top", "right", "bottom", "left"] as const).map((side) => (
-                <Input
-                  key={side}
-                  type="number"
-                  placeholder={side}
-                  value={selectedComponent.styles.padding?.[side] || 0}
-                  onChange={(e) => {
-                    updateComponentStyles(selectedComponent.id, {
-                      padding: {
-                        ...selectedComponent.styles.padding,
-                        [side]: parseInt(e.target.value) || 0,
-                      },
-                    });
-                  }}
-                  className="h-8 text-xs"
-                />
-              ))}
+    <DndProvider backend={HTML5Backend}>
+      <div className="min-h-screen bg-background flex flex-col">
+        {/* Header */}
+        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
+          <div className="flex h-16 items-center justify-between px-4">
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="icon" onClick={() => router.push("/builder")}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <NextLink href="/" className="flex items-center gap-2 shrink-0">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-xl font-bold">Wesbyte</span>
+              </NextLink>
             </div>
-          </div>
-
-          {/* Margin */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Margin (px)</Label>
-            <div className="grid grid-cols-4 gap-2">
-              {(["top", "right", "bottom", "left"] as const).map((side) => (
-                <Input
-                  key={side}
-                  type="number"
-                  placeholder={side}
-                  value={selectedComponent.styles.margin?.[side] || 0}
-                  onChange={(e) => {
-                    updateComponentStyles(selectedComponent.id, {
-                      margin: {
-                        ...selectedComponent.styles.margin,
-                        [side]: parseInt(e.target.value) || 0,
-                      },
-                    });
-                  }}
-                  className="h-8 text-xs"
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Background Color */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">
-              Background Color
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                type="color"
-                value={selectedComponent.styles.backgroundColor || "#ffffff"}
-                onChange={(e) => {
-                  updateComponentStyles(selectedComponent.id, {
-                    backgroundColor: e.target.value,
-                  });
-                }}
-                className="w-10 h-10 p-1"
-              />
-              <Input
-                value={selectedComponent.styles.backgroundColor || ""}
-                onChange={(e) => {
-                  updateComponentStyles(selectedComponent.id, {
-                    backgroundColor: e.target.value,
-                  });
-                }}
-                className="h-10 flex-1"
-                placeholder="#ffffff"
-              />
-            </div>
-          </div>
-
-          {/* Text Color */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Text Color</Label>
-            <div className="flex gap-2">
-              <Input
-                type="color"
-                value={selectedComponent.styles.color || "#000000"}
-                onChange={(e) => {
-                  updateComponentStyles(selectedComponent.id, {
-                    color: e.target.value,
-                  });
-                }}
-                className="w-10 h-10 p-1"
-              />
-              <Input
-                value={selectedComponent.styles.color || ""}
-                onChange={(e) => {
-                  updateComponentStyles(selectedComponent.id, {
-                    color: e.target.value,
-                  });
-                }}
-                className="h-10 flex-1"
-                placeholder="#000000"
-              />
-            </div>
-          </div>
-
-          {/* Border Radius */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">
-              Border Radius
-            </Label>
-            <Input
-              value={selectedComponent.styles.borderRadius || ""}
-              onChange={(e) => {
-                updateComponentStyles(selectedComponent.id, {
-                  borderRadius: e.target.value,
-                });
-              }}
-              placeholder="8px"
-            />
-          </div>
-
-          {/* Width */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Width</Label>
-            <Input
-              value={selectedComponent.styles.width || ""}
-              onChange={(e) => {
-                updateComponentStyles(selectedComponent.id, {
-                  width: e.target.value,
-                });
-              }}
-              placeholder="100%"
-            />
-          </div>
-
-          {/* Height */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Height</Label>
-            <Input
-              value={selectedComponent.styles.height || ""}
-              onChange={(e) => {
-                updateComponentStyles(selectedComponent.id, {
-                  height: e.target.value,
-                });
-              }}
-              placeholder="auto"
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="content"
-          className="flex-1 overflow-auto p-4 space-y-4"
-        >
-          {/* Title */}
-          {selectedComponent.content.title !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Title</Label>
-              <Input
-                value={selectedComponent.content.title || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      title: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {/* Subtitle */}
-          {selectedComponent.content.subtitle !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Subtitle</Label>
-              <Input
-                value={selectedComponent.content.subtitle || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      subtitle: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {/* Text */}
-          {selectedComponent.content.text !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Text</Label>
-              <textarea
-                className="w-full min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-                value={selectedComponent.content.text || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      text: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {/* Button Text */}
-          {selectedComponent.content.buttonText !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                Button Text
-              </Label>
-              <Input
-                value={selectedComponent.content.buttonText || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      buttonText: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {/* Image URL */}
-          {selectedComponent.content.image !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Image URL</Label>
-              <Input
-                value={selectedComponent.content.image || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      image: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {/* Description */}
-          {selectedComponent.content.description !== undefined && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                Description
-              </Label>
-              <textarea
-                className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm"
-                value={selectedComponent.content.description || ""}
-                onChange={(e) => {
-                  updateComponent(selectedComponent.id, {
-                    content: {
-                      ...selectedComponent.content,
-                      description: e.target.value,
-                    },
-                  });
-                }}
-              />
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function LayerItem({
-  component,
-  depth = 0,
-  selectedId,
-  onSelect,
-  onDelete,
-  onDuplicate,
-}: {
-  component: WebsiteComponent;
-  depth?: number;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
-  onDuplicate: (id: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(depth < 1);
-  const hasChildren = component.children && component.children.length > 0;
-
-  return (
-    <div>
-      <div
-        className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted ${
-          selectedId === component.id ? "bg-primary/10" : ""
-        }`}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        onClick={() => onSelect(component.id)}
-      >
-        {hasChildren ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded(!expanded);
-            }}
-            className="p-0.5"
-          >
-            {expanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </button>
-        ) : (
-          <div className="w-4" />
-        )}
-        <Component className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm truncate capitalize">{component.type}</span>
-        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate(component.id);
-            }}
-            className="p-1 hover:bg-muted rounded"
-          >
-            <Copy className="h-3 w-3" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(component.id);
-            }}
-            className="p-1 hover:bg-destructive/20 rounded"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-      {expanded && hasChildren && (
-        <div>
-          {component.children!.map((child) => (
-            <LayerItem
-              key={child.id}
-              component={child}
-              depth={depth + 1}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onDuplicate={onDuplicate}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function EditorPage() {
-  const router = useRouter();
-  const currentPage = useCurrentPage();
-  const selectedComponent = useSelectedComponent();
-
-  const {
-    addComponent,
-    deleteComponent,
-    duplicateComponent,
-    reorderComponents,
-    moveComponent,
-  } = useWebsiteStore();
-
-  const {
-    selectedComponentId,
-    setSelectedComponent,
-    devicePreview,
-    setDevicePreview,
-    sidebarTab,
-    setSidebarTab,
-  } = useEditorStore();
-
-  const { undo, redo, canUndo, canRedo, pushHistory } = useHistoryStore();
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const [activeComponent, setActiveComponent] =
-    useState<WebsiteComponent | null>(null);
-  const [isLeftOpen, setIsLeftOpen] = useState(false);
-  const [isRightOpen, setIsRightOpen] = useState(false);
-  const [isEditorFocused, setIsEditorFocused] = useState(false);
-
-  const headerRef = useRef<HTMLDivElement>(null);
-  const leftSidebarRef = useRef<HTMLDivElement>(null);
-  const rightSidebarRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-
-      const inHeader = headerRef.current?.contains(target);
-      const inLeft = leftSidebarRef.current?.contains(target);
-      const inRight = rightSidebarRef.current?.contains(target);
-
-      if (inHeader || inLeft || inRight) {
-        setIsEditorFocused(false);
-      } else {
-        setIsEditorFocused(true);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
-
-  useEffect(() => {
-    if (!isLeftOpen && !isRightOpen) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      const inLeft = leftSidebarRef.current?.contains(target);
-      const inRight = rightSidebarRef.current?.contains(target);
-
-      if (!inLeft && !inRight) {
-        setIsLeftOpen(false);
-        setIsRightOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [isLeftOpen, isRightOpen]);
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const component = currentPage?.components.find((c) => c.id === active.id);
-    if (component) {
-      setActiveComponent(component);
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveComponent(null);
-
-    if (over && active.id !== over.id && currentPage) {
-      const oldIndex = currentPage.components.findIndex(
-        (c) => c.id === active.id,
-      );
-      const newIndex = currentPage.components.findIndex(
-        (c) => c.id === over.id,
-      );
-
-      if (oldIndex !== -1 && newIndex !== -1) {
-        pushHistory(currentPage);
-        reorderComponents(oldIndex, newIndex);
-      }
-    }
-  };
-
-  const handleAddComponent = (type: ComponentType) => {
-    if (currentPage) {
-      pushHistory(currentPage);
-    }
-    const newId = addComponent(createComponent(type));
-    if (newId) {
-      setSelectedComponent(newId);
-    }
-  };
-
-  const handleDelete = (componentId: string) => {
-    if (currentPage) {
-      pushHistory(currentPage);
-    }
-    deleteComponent(componentId);
-    if (selectedComponentId === componentId) {
-      setSelectedComponent(null);
-    }
-  };
-
-  const handleDuplicate = (componentId: string) => {
-    if (currentPage) {
-      pushHistory(currentPage);
-    }
-    const newId = duplicateComponent(componentId);
-    if (newId) {
-      setSelectedComponent(newId);
-    }
-  };
-
-  const handleUndo = () => {
-    const previousPage = undo();
-    if (previousPage && currentPage) {
-      // Apply the previous state
-    }
-  };
-
-  const handleRedo = () => {
-    const nextPage = redo();
-    if (nextPage && currentPage) {
-      // Apply the next state
-    }
-  };
-
-  const deviceSizes = {
-    desktop: "w-full",
-    tablet: "w-[768px] max-w-full",
-    mobile: "w-[375px] max-w-full",
-  };
-
-  useEffect(() => {
-    if (!currentPage && !useWebsiteStore.getState().currentPageId) {
-      router.push("/builder");
-    }
-  }, [currentPage, router]);
-
-  return (
-    <div className="h-screen flex flex-col bg-background">
-      <header
-        ref={headerRef}
-        className="border-b flex justify-center lg:justify-between px-4 h-14"
-      >
-        <div className="hidden lg:flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-bold">Wesbyte</span>
-          </Link>
-          <Separator orientation="vertical" className="h-6" />
-          <span className="text-sm text-muted-foreground">
-            {currentPage?.name || "Untitled"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex lg:hidden items-center border rounded-lg">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-none"
-              onClick={() => {
-                setIsLeftOpen(true);
-                setIsRightOpen(false);
-              }}
-            >
-              <PanelLeft className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-none"
-              onClick={() => {
-                setIsRightOpen(true);
-                setIsLeftOpen(false);
-              }}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="flex items-center border rounded-lg">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-none"
-              onClick={handleUndo}
-              disabled={!canUndo()}
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Separator orientation="vertical" className="h-6" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-none"
-              onClick={handleRedo}
-              disabled={!canRedo()}
-            >
-              <Redo className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="hidden md:flex items-center border rounded-lg">
-            <button
-              onClick={() => setDevicePreview("desktop")}
-              className={`p-2 ${
-                devicePreview === "desktop"
-                  ? "bg-primary text-primary-foreground"
-                  : ""
-              }`}
-            >
-              <Monitor className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setDevicePreview("tablet")}
-              className={`p-2 ${
-                devicePreview === "tablet"
-                  ? "bg-primary text-primary-foreground"
-                  : ""
-              }`}
-            >
-              <Tablet className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setDevicePreview("mobile")}
-              className={`p-2 ${
-                devicePreview === "mobile"
-                  ? "bg-primary text-primary-foreground"
-                  : ""
-              }`}
-            >
-              <Smartphone className="h-4 w-4" />
-            </button>
-          </div>
-
-          <Button className="gap-2">
-            <Save className="h-4 w-4" />
-            <span className="hidden md:block">Save</span>
-          </Button>
-
-          <Button variant="outline" className="gap-2">
-            <Eye className="h-4 w-4" />
-            <span className="hidden md:block">Preview</span>
-          </Button>
-
-          <Link href="/publish">
-            <Button variant="default" className="gap-2">
-              <span className="hidden md:block">Publish</span>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </header>
-
-      {(isLeftOpen || isRightOpen) && (
-        <div
-          className="fixed inset-0 bg-black/40 z-30 md:hidden"
-          onClick={() => {
-            setIsLeftOpen(false);
-            setIsRightOpen(false);
-          }}
-        />
-      )}
-
-      <div className="flex-1 flex overflow-hidden">
-        <div
-          className={`fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 ${
-            isLeftOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:flex`}
-          ref={leftSidebarRef}
-        >
-          <Tabs
-            value={sidebarTab}
-            onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}
-            className="flex-1 flex flex-col"
-          >
-            <TabsList className="m-2">
-              <TabsTrigger value="components" className="flex-1 text-xs">
-                <Plus className="h-3 w-3 mr-1" />
-                Add
-              </TabsTrigger>
-              <TabsTrigger value="layers" className="flex-1 text-xs">
-                <Layers className="h-3 w-3 mr-1" />
-                Layers
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent
-              value="components"
-              className="flex-1 overflow-auto p-2"
-            >
-              <div className="space-y-4">
-                {Array.from(
-                  new Set(componentLibrary.map((c) => c.category)),
-                ).map((category) => (
-                  <div key={category}>
-                    <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                      {category}
-                    </h4>
-                    <div className="space-y-1">
-                      {componentLibrary
-                        .filter((c) => c.category === category)
-                        .map((item) => (
-                          <ComponentLibraryItem
-                            key={item.type}
-                            item={item}
-                            onAdd={() => handleAddComponent(item.type)}
-                          />
-                        ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="layers" className="flex-1 overflow-auto p-2">
-              <ScrollArea className="h-full">
-                {currentPage && currentPage.components.length > 0 ? (
-                  <div className="space-y-1">
-                    {currentPage.components.map((component) => (
-                      <LayerItem
-                        key={component.id}
-                        component={component}
-                        selectedId={selectedComponentId}
-                        onSelect={setSelectedComponent}
-                        onDelete={handleDelete}
-                        onDuplicate={handleDuplicate}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-sm text-muted-foreground p-4">
-                    No components yet. Add some from the Components tab.
-                  </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        </div>
-
-        <div
-          className="flex-1 overflow-auto bg-muted/30"
-          onMouseDown={() => setIsEditorFocused(true)}
-          onTouchStart={() => setIsEditorFocused(true)}
-        >
-          <div className="p-8 flex justify-center">
-            <motion.div
-              layout
-              className={`bg-background border shadow-lg rounded ${deviceSizes[devicePreview]}`}
-              style={{ minHeight: "calc(100vh - 250px)" }}
-            >
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={editingMode === "visual" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setEditingMode("visual")}
               >
-                <SortableContext
-                  items={currentPage?.components.map((c) => c.id) || []}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {currentPage && currentPage.components.length > 0 ? (
-                    currentPage.components.map((component) => (
-                      <SortableItem
-                        key={component.id}
-                        component={component}
-                        isSelected={selectedComponentId === component.id}
-                        onSelect={() => setSelectedComponent(component.id)}
-                        onDelete={() => handleDelete(component.id)}
-                        onDuplicate={() => handleDuplicate(component.id)}
-                      >
-                        <RenderNode node={component} />
-                      </SortableItem>
-                    ))
-                  ) : (
-                    <div className="flex items-center justify-center h-[400px]">
-                      <div className="text-center max-w-md">
-                        <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
-                          <Layout className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <h3 className="text-lg font-semibold mb-2">
-                          Start building your page
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          Click on components in the left sidebar to add them to
-                          your page. Drag to reorder.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </SortableContext>
+                <Eye className="h-4 w-4 mr-1" /> Visual
+              </Button>
+              <Button
+                variant={editingMode === "code" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setEditingMode("code")}
+              >
+                <Code className="h-4 w-4 mr-1" /> Code
+              </Button>
+            </div>
+          </div>
+        </header>
 
-                <DragOverlay>
-                  {activeComponent && (
-                    <div className="opacity-70">
-                      <RenderNode node={activeComponent} />
+        {/* Main layout: three columns */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left sidebar: Palette and Layer Tree */}
+          <div className="w-64 border-r bg-muted/20 flex flex-col overflow-auto">
+            <Palette onInsert={insertElement} />
+            <div className="p-3">
+              <h3 className="font-semibold mb-2">Layer Tree</h3>
+              <div className="text-sm">{rootElement && renderLayerTree(rootElement)}</div>
+            </div>
+          </div>
+
+          {/* Center canvas: Preview or Code editor */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Top toolbar */}
+            <div className="border-b p-2 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="flex border rounded-lg overflow-hidden">
+                  {[
+                    { device: "desktop", icon: Monitor },
+                    { device: "tablet", icon: Tablet },
+                    { device: "mobile", icon: Smartphone },
+                  ].map(({ device, icon: Icon }) => (
+                    <button
+                      key={device}
+                      onClick={() => setDevicePreview(device as any)}
+                      className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setIsFileTreeOpen(true)}>
+                  <FolderTree className="h-4 w-4 mr-1" /> Files
+                </Button>
+              </div>
+            </div>
+
+            {/* Preview or Code area */}
+            <div className="flex-1 bg-muted/30 overflow-auto">
+              {editingMode === "visual" ? (
+                <div className="flex items-center justify-center p-6 min-h-full">
+                  <div
+                    className="shadow-2xl bg-background overflow-auto"
+                    style={{
+                      width:
+                        devicePreview === "desktop"
+                          ? "min(1200px, 100%)"
+                          : devicePreview === "tablet"
+                          ? "min(820px, 100%)"
+                          : "min(390px, 100%)",
+                      minHeight: "calc(100vh - 200px)",
+                    }}
+                  >
+                    <div className="preview">
+                      <DirectRenderer />
                     </div>
-                  )}
-                </DragOverlay>
-              </DndContext>
-            </motion.div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 h-full flex flex-col">
+                  <Textarea
+                    value={codeEditorContent}
+                    onChange={(e) => setCodeEditorContent(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                    style={{ minHeight: "400px" }}
+                  />
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="outline" onClick={() => setCodeEditorContent(files["src/App.jsx"])}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCodeSave}>Save & Preview</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right sidebar: Property Panel */}
+          <div className="w-72 border-l bg-muted/20 p-4 overflow-auto">
+            <h3 className="font-semibold mb-4">Properties</h3>
+            {selectedNode && t.isJSXElement(selectedNode) ? (
+              <div className="space-y-4">
+                <div>
+                  <Label>Tag</Label>
+                  <Input value={selectedNode.openingElement.name.name} disabled />
+                </div>
+                <div>
+                  <Label>Class Name</Label>
+                  <Input
+                    placeholder="className"
+                    value={
+                      selectedNode.openingElement.attributes.find(
+                        (attr: any) => t.isJSXAttribute(attr) && attr.name.name === "className"
+                      )?.value?.value || ""
+                    }
+                    onChange={(e) => updateSelectedAttribute("className", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Text Content</Label>
+                  <Input
+                    placeholder="text"
+                    value={
+                      selectedNode.children[0] && t.isJSXText(selectedNode.children[0])
+                        ? selectedNode.children[0].value
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const newChildren = [t.jsxText(e.target.value)];
+                      selectedNode.children = newChildren;
+                      saveAstToStore();
+                    }}
+                  />
+                </div>
+                <Button variant="destructive" size="sm" onClick={deleteSelectedElement}>
+                  Delete Element
+                </Button>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">Select an element from the layer tree to edit properties.</p>
+            )}
           </div>
         </div>
 
-        <div
-          className={`fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l bg-background flex flex-col transform transition-transform duration-200 lg:static lg:z-auto lg:w-80 lg:translate-x-0 ${
-            isRightOpen ? "translate-x-0" : "translate-x-full"
-          } lg:flex`}
-          ref={rightSidebarRef}
-        >
-          <PropertiesPanel setIsRightOpen={setIsRightOpen} />
-        </div>
+        {/* File tree sheet */}
+        <Sheet open={isFileTreeOpen} onOpenChange={setIsFileTreeOpen}>
+          <SheetContent side="right" className="w-[90vw] sm:w-[700px] p-0 flex flex-col">
+            <SheetHeader className="p-4 border-b">
+              <SheetTitle>Project Files</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-1 overflow-hidden">
+              <div className="w-1/3 border-r overflow-auto p-2">
+                <h4 className="text-sm font-medium mb-2 px-2">Files</h4>
+                <ul className="space-y-1">
+                  {Object.keys(files).map((path) => (
+                    <li
+                      key={path}
+                      className={`text-sm p-2 rounded-md cursor-pointer hover:bg-muted ${
+                        selectedFilePath === path ? "bg-muted font-medium" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedFilePath(path);
+                        setEditContent(files[path]);
+                      }}
+                    >
+                      {path}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex-1 flex flex-col p-4 overflow-auto">
+                {selectedFilePath ? (
+                  <>
+                    <div className="text-sm text-muted-foreground mb-2">{selectedFilePath}</div>
+                    <Textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="flex-1 font-mono text-sm"
+                      style={{ minHeight: "300px" }}
+                    />
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="outline" onClick={() => setIsFileTreeOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          updateFileContent(selectedFilePath, editContent);
+                          setIsFileTreeOpen(false);
+                        }}
+                      >
+                        Save Changes
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-muted-foreground mt-8">Select a file to edit</div>
+                )}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
-    </div>
+    </DndProvider>
   );
 }
