@@ -17,9 +17,11 @@ import {
   Lightbulb,
   PanelLeft,
 } from "lucide-react";
-import { generateComponents } from "@/lib/ai";
-import { useWebsiteStore, useAIStore, useEditorStore } from "@/store";
+import { generateComponents, generateProject } from "@/lib/ai";
+import { useAIStore, useCurrentPage, useWebsiteStore } from "@/store";
+import { useProjectStore } from "@/store/projectStore";
 import { RenderNode } from "@/components/editor/renderers";
+import { MultiFileSandbox } from "@/components/editor/MultiFileSandbox";
 import Link from "next/link";
 
 const examplePrompts = [
@@ -35,14 +37,15 @@ export default function BuilderPage() {
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [devicePreview, setDevicePreview] = useState<
+    "desktop" | "tablet" | "mobile"
+  >("desktop");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { createWebsite, currentPageId, pages, addComponent } =
-    useWebsiteStore();
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
-  const { setDevicePreview, devicePreview } = useEditorStore();
-
-  const currentPage = pages.find((p) => p.id === currentPageId);
+  const currentPage = useCurrentPage();
+  const { currentPageId, createWebsite, addComponent } = useWebsiteStore();
+  const { setFiles, files } = useProjectStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,24 +55,43 @@ export default function BuilderPage() {
     if (!prompt.trim() || isGenerating) return;
 
     setIsGenerating(true);
-
     const userPrompt = prompt;
     setPrompt("");
-
     addMessage("user", userPrompt);
 
     try {
-      const components = await generateComponents(userPrompt);
+      const [projectResult, componentResult] = await Promise.allSettled([
+        generateProject(userPrompt),
+        generateComponents(userPrompt),
+      ]);
 
-      if (!currentPageId) {
-        createWebsite("My Website");
+      if (projectResult.status === "fulfilled") {
+        setFiles(projectResult.value);
       }
 
-      addComponent(components);
-      addMessage(
-        "assistant",
-        `Generated components. Want changes or more sections?`,
-      );
+      if (componentResult.status === "fulfilled") {
+        if (!currentPageId) {
+          createWebsite("My Website");
+        }
+        addComponent(componentResult.value);
+      }
+
+      if (
+        projectResult.status === "fulfilled" &&
+        componentResult.status === "fulfilled"
+      ) {
+        addMessage("assistant", "Generated project files and components.");
+      } else if (projectResult.status === "fulfilled") {
+        addMessage("assistant", "Generated project with multiple files.");
+      } else if (componentResult.status === "fulfilled") {
+        addMessage(
+          "assistant",
+          "Generated components. Want changes or more sections?",
+        );
+      } else {
+        throw new Error("Both generation requests failed.");
+      }
+
       setShowSuggestions(false);
     } catch (error) {
       console.error(error);
@@ -82,6 +104,7 @@ export default function BuilderPage() {
     isGenerating,
     setIsGenerating,
     addMessage,
+    setFiles,
     currentPageId,
     createWebsite,
     addComponent,
@@ -92,32 +115,39 @@ export default function BuilderPage() {
     setShowSuggestions(false);
   };
 
-  const renderPreviewContent = () => (
-    <>
-      {currentPage && currentPage.components.length > 0 ? (
-        <div className="min-h-full">
-          {currentPage?.components?.map((component) => (
-            <div key={component.id}>
-              <RenderNode node={component} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="h-full flex items-center justify-center p-12 text-center">
-          <div>
-            <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
-              <Wand2 className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Your website preview</h3>
-            <p className="text-sm text-muted-foreground">
-              Describe what you want to build, and your website will appear
-              here.
-            </p>
+  const renderPreviewContent = () => {
+    if (Object.keys(files).length > 0) {
+      return <MultiFileSandbox />;
+    }
+    return (
+      <>
+        {currentPage && currentPage.components.length > 0 ? (
+          <div className="min-h-full">
+            {currentPage?.components?.map((component) => (
+              <div key={component.id}>
+                <RenderNode node={component} />
+              </div>
+            ))}
           </div>
-        </div>
-      )}
-    </>
-  );
+        ) : (
+          <div className="h-full flex items-center justify-center p-12 text-center">
+            <div>
+              <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-6">
+                <Wand2 className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">
+                Your website preview
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Describe what you want to build, and your website will appear
+                here.
+              </p>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -162,23 +192,30 @@ export default function BuilderPage() {
         />
       )}
 
-      {/* Horizontal layout: side by side, scroll if needed */}
+      {/* Horizontal layout */}
       <div className="flex-1 flex flex-row overflow-auto min-h-0">
-        {/* Chat Panel - fixed width on desktop, sidebar on mobile */}
+        {/* Chat Panel */}
         <div
-          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${isChatOpen ? "translate-x-0" : "-translate-x-full"} md:flex md:shrink-0`}
+          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${
+            isChatOpen ? "translate-x-0" : "-translate-x-full"
+          } md:flex md:shrink-0`}
         >
-          {/* Scrollable messages + suggestions */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((message, idx) => (
+            {messages.map((message) => (
               <motion.div
                 key={message.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${
+                  message.role === "user" ? "justify-end" : "justify-start"
+                }`}
               >
                 <div
-                  className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                  className={`max-w-[85%] rounded-lg px-4 py-2 ${
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">
                     {message.content}
@@ -218,7 +255,7 @@ export default function BuilderPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area at bottom of chat panel */}
+          {/* Input area */}
           <div className="border-t p-4 space-y-3 bg-background flex-shrink-0">
             <div className="relative">
               <Textarea
@@ -270,15 +307,13 @@ export default function BuilderPage() {
           </div>
         </div>
 
-        {/* Preview Panel - flexible width */}
         {/* Preview Panel */}
         <div className="flex-1 flex flex-col min-w-0 h-full">
-          {/* Top bar */}
+          {/* Top bar with device switcher */}
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
             <span className="text-sm font-medium text-muted-foreground">
               Preview
             </span>
-
             <div className="flex items-center border rounded-lg">
               {[
                 { device: "desktop", icon: Monitor },
@@ -300,9 +335,8 @@ export default function BuilderPage() {
             </div>
           </div>
 
-          {/* Center stage */}
+          {/* Center stage with device wrapper */}
           <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
-            {/* DEVICE WRAPPER */}
             <div
               className="shadow-2xl bg-background overflow-hidden flex flex-col"
               style={{
@@ -312,19 +346,16 @@ export default function BuilderPage() {
                     : devicePreview === "tablet"
                       ? "min(820px, 100%)"
                       : "min(390px, 100%)",
-
                 aspectRatio:
                   devicePreview === "desktop"
                     ? "16 / 10"
                     : devicePreview === "tablet"
                       ? "4 / 3"
                       : "9 / 19.5",
-
                 border:
                   devicePreview === "desktop"
                     ? "1px solid #e5e7eb"
                     : "10px solid #1f2937",
-
                 borderRadius:
                   devicePreview === "desktop"
                     ? "12px"
@@ -333,7 +364,7 @@ export default function BuilderPage() {
                       : "36px",
               }}
             >
-              {/* Desktop chrome */}
+              {/* Desktop chrome (optional) */}
               {devicePreview === "desktop" && (
                 <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
                   <div className="flex gap-1.5">
@@ -341,7 +372,6 @@ export default function BuilderPage() {
                     <div className="h-3 w-3 rounded-full bg-yellow-500" />
                     <div className="h-3 w-3 rounded-full bg-green-500" />
                   </div>
-
                   <div className="flex-1 text-center">
                     <div className="inline-flex items-center gap-2 rounded-md bg-background px-4 py-1 text-sm text-muted-foreground">
                       <Sparkles className="h-3 w-3" />
@@ -351,20 +381,19 @@ export default function BuilderPage() {
                 </div>
               )}
 
-              {/* PHONE + TABLET TOP CHROME */}
+              {/* Phone/tablet top notch */}
               {(devicePreview === "mobile" || devicePreview === "tablet") && (
                 <div className="h-4 bg-gray-800 flex-shrink-0 relative">
-                  {/* optional top speaker notch line */}
                   <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
                 </div>
               )}
 
-              {/* CONTENT AREA */}
+              {/* Content area */}
               <div className="flex-1 overflow-y-auto">
                 {renderPreviewContent()}
               </div>
 
-              {/* PHONE + TABLET BOTTOM GESTURE BAR */}
+              {/* Phone/tablet bottom gesture bar */}
               {(devicePreview === "mobile" || devicePreview === "tablet") && (
                 <div className="h-4 bg-gray-800 flex-shrink-0 relative">
                   <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
