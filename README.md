@@ -75,7 +75,7 @@ graph TD
 - 📱 Responsive design preview modes
 - 🎨 Theme, typography, and layout customization
 - 🧠 AI copywriting + design assistant
-- ⚡ Export to clean React/Next.js code
+- ⚡ Export to clean React code
 - 🚀 One-click deployment support
 
 ---

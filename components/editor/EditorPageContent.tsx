@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
+import { ComponentPreviewRenderer } from "@/components/editor/ComponentPreviewRenderer";
 import { LeftSidebar } from "./LeftSidebar";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PropertyPanel } from "./PropertyPanel";
@@ -21,7 +22,7 @@ import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-re
 import NextLink from "next/link";
 import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
 
-// Sidebar tabs (scalable)
+// Sidebar tabs
 import { SidebarTab } from "./LeftSidebar";
 import { ElementsTab } from "./SidebarTabs/ElementsTab";
 import { LayerTreeTab } from "./SidebarTabs/LayerTreeTab";
@@ -53,10 +54,10 @@ export default function EditorPageContent() {
   const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [interactiveMode, setInteractiveMode] = useState(true);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
-  
-  // File tree sheet state
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
   const [fileTreeInitialFile, setFileTreeInitialFile] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<"full" | "file">("full");
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Basic attributes
   const [selectedClassName, setSelectedClassName] = useState("");
@@ -67,33 +68,21 @@ export default function EditorPageContent() {
   const [selectedTarget, setSelectedTarget] = useState("");
   const [selectedRel, setSelectedRel] = useState("");
   const [selectedText, setSelectedText] = useState("");
-
-  // Style and dimensions
   const [selectedStyle, setSelectedStyle] = useState("");
   const [selectedWidth, setSelectedWidth] = useState("");
   const [selectedHeight, setSelectedHeight] = useState("");
-
-  // Input attributes
   const [selectedPlaceholder, setSelectedPlaceholder] = useState("");
   const [selectedDisabled, setSelectedDisabled] = useState(false);
   const [selectedReadOnly, setSelectedReadOnly] = useState(false);
   const [selectedAutoComplete, setSelectedAutoComplete] = useState("");
-
-  // Tab index
   const [selectedTabIndex, setSelectedTabIndex] = useState("");
-
-  // ARIA
   const [selectedAriaLabel, setSelectedAriaLabel] = useState("");
   const [selectedAriaHidden, setSelectedAriaHidden] = useState(false);
-
-  // Event handler
   const [selectedOnClick, setSelectedOnClick] = useState("");
-
-  // Custom attribute
   const [customAttrKey, setCustomAttrKey] = useState("");
   const [customAttrValue, setCustomAttrValue] = useState("");
 
-  const { files, setFiles, updateFileContent } = useProjectStore();
+  const { files, setFiles, updateFileContent, selectedFilePath } = useProjectStore();
   const previewRef = useRef<HTMLDivElement>(null);
 
   // Inject mock project if empty
@@ -219,18 +208,18 @@ export default function EditorPageContent() {
     handleSelectElement(target.tagName.toLowerCase());
   };
 
-  // File tree handlers
   const handleFileTreeClick = () => {
     setIsFileTreeOpen(true);
-    if (window.innerWidth < 768) setIsMobileSheetOpen(false); // close property sheet on mobile
+    if (window.innerWidth < 768) setIsMobileSheetOpen(false);
   };
 
   const handleCloseFileTree = () => {
     setIsFileTreeOpen(false);
     setFileTreeInitialFile(null);
+    // When closing file tree, reset preview mode to full app if needed? User preference.
   };
 
-  // Define sidebar tabs (using the new scalable system)
+  // Define sidebar tabs
   const sidebarTabs: SidebarTab[] = [
     {
       id: "elements",
@@ -284,7 +273,6 @@ export default function EditorPageContent() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - always rendered, now scalable */}
         <LeftSidebar
           tabs={sidebarTabs}
           activeTabId={activeTab}
@@ -293,7 +281,6 @@ export default function EditorPageContent() {
           onToggle={() => setIsLeftOpen(!isLeftOpen)}
         />
 
-        {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0">
           <PreviewToolbar
             devicePreview={devicePreview}
@@ -313,7 +300,14 @@ export default function EditorPageContent() {
               }}
             >
               <div ref={previewRef} onClick={handlePreviewClick} className="preview">
-                <DirectRenderer />
+                {previewMode === "full" ? (
+                  <DirectRenderer />
+                ) : (
+                  <ComponentPreviewRenderer
+                    filePath={selectedFilePath}
+                    onError={setPreviewError}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -372,7 +366,6 @@ export default function EditorPageContent() {
         </div>
       </div>
 
-      {/* Mobile property sheet */}
       <MobilePropertySheet
         isOpen={isMobileSheetOpen}
         onClose={() => setIsMobileSheetOpen(false)}
@@ -418,11 +411,16 @@ export default function EditorPageContent() {
         interactiveMode={interactiveMode}
       />
 
-      {/* File tree sheet (shared) */}
       <FileTreeSheet
         isOpen={isFileTreeOpen}
         onClose={handleCloseFileTree}
         initialFilePath={fileTreeInitialFile}
+        previewMode={previewMode}
+        onPreviewModeChange={(mode) => {
+          setPreviewMode(mode);
+          if (mode === "full") setPreviewError(null);
+        }}
+        hasError={!!previewError}
       />
     </div>
   );
