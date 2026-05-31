@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Settings } from "lucide-react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
+import { Button } from "@/components/ui/button";
 import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
 
 export function MobilePropertySheet({
   isOpen,
   onClose,
   selectedElement,
+  selectedElementRaw,
   classNameValue,
   onClassNameChange,
   idValue,
@@ -49,6 +51,9 @@ export function MobilePropertySheet({
   onCustomAttrKeyChange,
   onCustomAttrValueChange,
   onAddCustomAttr,
+  isCustomComponent,
+  customComponentFilePath,
+  onOpenFile,
 }: any) {
   const [stylesObj, setStylesObj] = useState<StyleValues>({});
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -79,7 +84,6 @@ export function MobilePropertySheet({
   const handleHeightSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTempHeight(Number(e.target.value));
   };
-
   const commitHeight = () => {
     setSheetHeight(tempHeight);
   };
@@ -96,16 +100,13 @@ export function MobilePropertySheet({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:hidden">
-      {/* Sheet panel (no backdrop) */}
       <div
         className="relative bg-background w-full rounded-t-xl shadow-xl flex flex-col transition-all duration-300 ease-out"
         style={{ maxHeight: `${sheetHeight}vh` }}
       >
-        {/* Drag handle (visual only) */}
         <div className="flex justify-center pt-2">
           <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
         </div>
-        {/* Header */}
         <div className="flex justify-between items-center p-4 border-b">
           <h3 className="font-semibold">Properties</h3>
           <div className="flex items-center gap-2">
@@ -121,7 +122,6 @@ export function MobilePropertySheet({
             </button>
           </div>
         </div>
-        {/* Height menu (slider) */}
         {showHeightMenu && (
           <div className="absolute right-4 top-16 z-10 bg-popover border rounded-md shadow-md p-3 w-48">
             <div className="text-xs font-medium text-muted-foreground mb-2">Sheet height: {tempHeight}%</div>
@@ -143,24 +143,38 @@ export function MobilePropertySheet({
             </div>
           </div>
         )}
-        {/* Scrollable content */}
         <div className="overflow-y-auto p-4 space-y-4" style={{ maxHeight: `calc(${sheetHeight}vh - 70px)` }}>
-          {/* (all content unchanged) */}
-          {!selectedElement ? (
+          {!selectedElement || !selectedElementRaw ? (
             <p className="text-muted-foreground text-sm">
               {interactiveMode
                 ? "Shift+click an element to edit properties."
                 : "Click an element to edit properties."}
             </p>
+          ) : isCustomComponent ? (
+            <div className="p-4 border rounded-md bg-muted/20 text-center space-y-3">
+              <p className="text-sm">
+                This is a custom component (<strong>{selectedElementRaw}</strong>).
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Edit its source code directly.
+              </p>
+              {customComponentFilePath && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full"
+                  onClick={() => onOpenFile?.(customComponentFilePath)}
+                >
+                  Edit {customComponentFilePath}
+                </Button>
+              )}
+            </div>
           ) : (
             <>
-              {/* Tag */}
               <div>
                 <label className="text-sm font-medium">Tag</label>
-                <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
+                <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElementRaw}</div>
               </div>
-
-              {/* Class Name */}
               <div>
                 <label className="text-sm font-medium">Class Name</label>
                 <input
@@ -171,7 +185,6 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
-              {/* ID */}
               <div>
                 <label className="text-sm font-medium">ID</label>
                 <input
@@ -182,8 +195,6 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
-
-              {/* Text Content */}
               {!isVoid && textEditable && (
                 <div>
                   <label className="text-sm font-medium">Text Content</label>
@@ -196,8 +207,6 @@ export function MobilePropertySheet({
                   />
                 </div>
               )}
-
-              {/* Image specific */}
               {tagLower === "img" && (
                 <>
                   <div>
@@ -222,8 +231,6 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
-
-              {/* Link specific */}
               {tagLower === "a" && (
                 <>
                   <div>
@@ -258,14 +265,10 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
-
-              {/* Visual Style Editor */}
               <div>
                 <label className="text-sm font-medium">Visual Styles</label>
                 <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
               </div>
-
-              {/* Input specific */}
               {(tagLower === "input" || tagLower === "textarea") && (
                 <>
                   <div>
@@ -308,8 +311,6 @@ export function MobilePropertySheet({
                   </div>
                 </>
               )}
-
-              {/* Tab index */}
               <div>
                 <label className="text-sm font-medium">Tab Index</label>
                 <input
@@ -320,8 +321,6 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
-
-              {/* ARIA */}
               <div>
                 <label className="text-sm font-medium">Aria Label</label>
                 <input
@@ -341,8 +340,6 @@ export function MobilePropertySheet({
                   className="h-4 w-4"
                 />
               </div>
-
-              {/* On Click */}
               <div>
                 <label className="text-sm font-medium">On Click</label>
                 <select
@@ -360,8 +357,6 @@ export function MobilePropertySheet({
                   <option value="() => window.open('https://google.com', '_blank')">Open new tab</option>
                 </select>
               </div>
-
-              {/* Custom Attribute */}
               <div className="border-t pt-4">
                 <button
                   onClick={() => setShowCustomModal(true)}
@@ -375,7 +370,6 @@ export function MobilePropertySheet({
         </div>
       </div>
 
-      {/* Custom Attribute Modal */}
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background rounded-lg p-6 w-80">

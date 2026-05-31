@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
+import { Button } from "@/components/ui/button";
 import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
 
 export function PropertyPanel({
   selectedElement,
+  selectedElementRaw,
   classNameValue,
   onClassNameChange,
   idValue,
@@ -24,7 +26,6 @@ export function PropertyPanel({
   onRelChange,
   styleValue,
   onStyleChange,
-  // Removed width/height props – they are now only in StyleEditor
   placeholderValue,
   onPlaceholderChange,
   disabledChecked,
@@ -47,6 +48,9 @@ export function PropertyPanel({
   onCustomAttrValueChange,
   onAddCustomAttr,
   interactiveMode,
+  isCustomComponent,
+  customComponentFilePath,
+  onOpenFile,
 }: any) {
   const [stylesObj, setStylesObj] = useState<StyleValues>({});
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -63,18 +67,6 @@ export function PropertyPanel({
     }
     setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
-  
-  useEffect(() => {
-  if (isInternalUpdate.current) {
-    isInternalUpdate.current = false;
-    return;
-  }
-  if (!styleValue) {
-    setStylesObj({});
-    return;
-  }
-  setStylesObj(stringToStyleObj(styleValue));
-}, [styleValue]);
 
   const handleStyleChange = (newStyles: StyleValues) => {
     isInternalUpdate.current = true;
@@ -83,13 +75,36 @@ export function PropertyPanel({
     onStyleChange(newStyleStr);
   };
 
-  if (!selectedElement) {
+  if (!selectedElement || !selectedElementRaw) {
     return (
       <p className="text-muted-foreground text-sm">
         {interactiveMode
           ? "Shift+click any element to edit its properties."
           : "Click any element to edit its properties."}
       </p>
+    );
+  }
+
+  if (isCustomComponent) {
+    return (
+      <div className="p-4 border rounded-md bg-muted/20 text-center space-y-3">
+        <p className="text-sm">
+          This is a custom component (<strong>{selectedElementRaw}</strong>).
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Edit its source code directly.
+        </p>
+        {customComponentFilePath && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => onOpenFile?.(customComponentFilePath)}
+          >
+            Edit {customComponentFilePath}
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -103,13 +118,11 @@ export function PropertyPanel({
 
   return (
     <div className="space-y-4">
-      {/* Tag */}
       <div>
         <label className="text-sm font-medium">Tag</label>
-        <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
+        <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElementRaw}</div>
       </div>
 
-      {/* Basic attributes */}
       <div>
         <label className="text-sm font-medium">Class Name</label>
         <input
@@ -131,7 +144,6 @@ export function PropertyPanel({
         />
       </div>
 
-      {/* Text content */}
       {!isVoid && textEditable && (
         <div>
           <label className="text-sm font-medium">Text Content</label>
@@ -145,7 +157,6 @@ export function PropertyPanel({
         </div>
       )}
 
-      {/* Image specific */}
       {tagLower === "img" && (
         <>
           <div>
@@ -171,7 +182,6 @@ export function PropertyPanel({
         </>
       )}
 
-      {/* Link specific */}
       {tagLower === "a" && (
         <>
           <div>
@@ -207,7 +217,6 @@ export function PropertyPanel({
         </>
       )}
 
-      {/* Style Editor (includes width/height, margin, padding, colors, etc.) */}
       <div>
         <div className="flex justify-between items-center">
           <label className="text-sm font-medium">Visual Styles</label>
@@ -215,7 +224,6 @@ export function PropertyPanel({
         <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
       </div>
 
-      {/* Input/textarea specific */}
       {(tagLower === "input" || tagLower === "textarea") && (
         <>
           <div>
@@ -259,7 +267,6 @@ export function PropertyPanel({
         </>
       )}
 
-      {/* Tab index */}
       <div>
         <label className="text-sm font-medium">Tab Index</label>
         <input
@@ -271,7 +278,6 @@ export function PropertyPanel({
         />
       </div>
 
-      {/* ARIA attributes */}
       <div>
         <label className="text-sm font-medium">Aria Label</label>
         <input
@@ -292,7 +298,6 @@ export function PropertyPanel({
         />
       </div>
 
-      {/* Event handler */}
       <div>
         <label className="text-sm font-medium">On Click</label>
         <select
@@ -311,7 +316,6 @@ export function PropertyPanel({
         </select>
       </div>
 
-      {/* Custom Attribute button */}
       <div className="border-t pt-4">
         <button
           onClick={() => setShowCustomModal(true)}
@@ -321,7 +325,6 @@ export function PropertyPanel({
         </button>
       </div>
 
-      {/* Custom Attribute Modal */}
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background rounded-lg p-6 w-96">
@@ -364,7 +367,7 @@ export function PropertyPanel({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Editing the first &lt;{selectedElement}&gt; in the file.
+        Editing the first &lt;{selectedElementRaw}&gt; in the file.
       </p>
     </div>
   );

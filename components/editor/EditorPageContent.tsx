@@ -46,6 +46,7 @@ module.exports = Header;`,
 export default function EditorPageContent() {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [selectedElementRaw, setSelectedElementRaw] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"elements" | "layerTree">("elements");
   const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [interactiveMode, setInteractiveMode] = useState(true);
@@ -54,8 +55,10 @@ export default function EditorPageContent() {
   const [fileTreeInitialFile, setFileTreeInitialFile] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"full" | "file">("full");
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isCustomComponent, setIsCustomComponent] = useState(false);
+  const [customComponentFilePath, setCustomComponentFilePath] = useState<string | null>(null);
 
-  // Basic attributes state
+  // Attribute state
   const [selectedClassName, setSelectedClassName] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedSrc, setSelectedSrc] = useState("");
@@ -81,14 +84,35 @@ export default function EditorPageContent() {
   const { files, setFiles, updateFileContent, selectedFilePath, setSelectedFilePath } = useProjectStore();
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Inject mock project if empty
   useEffect(() => {
     if (!files || Object.keys(files).length === 0) {
       setFiles(mockFiles);
     }
   }, [files, setFiles]);
 
-  // Dynamic layer tree – shows either App.jsx or the selected file (depending on preview mode)
+  // Build set of custom component names from src/*.jsx files
+  const customComponentNames = useMemo(() => {
+    const names = new Set<string>();
+    Object.keys(files).forEach((path) => {
+      if (path.startsWith('src/') && path.endsWith('.jsx')) {
+        const componentName = path.slice(4, -4); // "src/Header.jsx" -> "Header"
+        names.add(componentName);
+      }
+    });
+    return names;
+  }, [files]);
+
+  // On mobile, disable interactive mode so tapping always selects
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setInteractiveMode(false);
+    }
+  }, []);
+
+  // Force re-render of preview when files change
+  const filesKey = useMemo(() => Object.keys(files).sort().join(','), [files]);
+
+  // Dynamic layer tree (full app or selected file)
   const currentFileForLayerTree = useMemo(() => {
     if (previewMode === "file" && selectedFilePath && files[selectedFilePath]) {
       return selectedFilePath;
@@ -101,23 +125,7 @@ export default function EditorPageContent() {
     return parseJsxToTree(code);
   }, [files, currentFileForLayerTree]);
 
-  // Global click capture for interactive mode
-  useEffect(() => {
-    if (interactiveMode) return;
-    const handleCapture = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!previewRef.current?.contains(target)) return;
-      const interactiveTags = ["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"];
-      if (interactiveTags.includes(target.tagName)) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSelectElement(target.tagName.toLowerCase());
-      }
-    };
-    document.addEventListener("click", handleCapture, true);
-    return () => document.removeEventListener("click", handleCapture, true);
-  }, [interactiveMode]);
-
+  // Refresh attributes for a standard element
   const refreshAttributes = (tag: string, code: string) => {
     setSelectedClassName(getClassNameForTag(code, tag));
     setSelectedId(getAttributeForTag(code, tag, "id"));
@@ -140,13 +148,95 @@ export default function EditorPageContent() {
     setSelectedText(getTextForTag(code, tag));
   };
 
-  const handleSelectElement = (tag: string) => {
-    const appCode = files?.["src/App.jsx"] || "";
-    setSelectedElement(tag);
-    refreshAttributes(tag, appCode);
+  // Core selection function
+  const handleSelectElement = (rawTag: string) => {
+    const lowerTag = rawTag.toLowerCase();
+    setSelectedElement(lowerTag);
+    setSelectedElementRaw(rawTag);
+
+    const isCustom = customComponentNames.has(rawTag);
+    setIsCustomComponent(isCustom);
+
+    if (isCustom) {
+      const guessedPath = `src/${rawTag}.jsx`;
+      setCustomComponentFilePath(files[guessedPath] ? guessedPath : null);
+      // Clear all attribute states
+      setSelectedClassName("");
+      setSelectedId("");
+      setSelectedSrc("");
+      setSelectedAlt("");
+      setSelectedHref("");
+      setSelectedTarget("");
+      setSelectedRel("");
+      setSelectedStyle("");
+      setSelectedWidth("");
+      setSelectedHeight("");
+      setSelectedPlaceholder("");
+      setSelectedDisabled(false);
+      setSelectedReadOnly(false);
+      setSelectedAutoComplete("");
+      setSelectedTabIndex("");
+      setSelectedAriaLabel("");
+      setSelectedAriaHidden(false);
+      setSelectedOnClick("");
+      setSelectedText("");
+    } else {
+      setCustomComponentFilePath(null);
+      const appCode = files?.["src/App.jsx"] || "";
+      refreshAttributes(lowerTag, appCode);
+    }
+
     if (window.innerWidth < 768) setIsMobileSheetOpen(true);
   };
 
+  // Native click listener on the preview container (reliable on mobile)
+  useEffect(() => {
+    const container = previewRef.current;
+    if (!container) return;
+
+    const handleClick = (e: MouseEvent) => {
+      // On desktop with interactiveMode on, require Shift key
+      if (window.innerWidth >= 768 && interactiveMode && !e.shiftKey) return;
+
+      let target = e.target as HTMLElement;
+      // Find the deepest element that has a tag name matching a custom component
+      let customEl: HTMLElement | null = null;
+      while (target && target !== container) {
+        if (customComponentNames.has(target.tagName)) {
+          customEl = target;
+        }
+        target = target.parentElement!;
+      }
+      if (customEl) {
+        handleSelectElement(customEl.tagName);
+      } else if (e.target instanceof HTMLElement) {
+        // Fallback to the clicked element's tag
+        handleSelectElement(e.target.tagName);
+      }
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => container.removeEventListener('click', handleClick);
+  }, [interactiveMode, customComponentNames, files]);
+
+  // Interactive mode capture for buttons, links, etc. (only when interactiveMode is false)
+  useEffect(() => {
+    if (interactiveMode) return;
+    const handleCapture = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!previewRef.current?.contains(target)) return;
+      const interactiveTags = ["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"];
+      if (interactiveTags.includes(target.tagName)) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Let the global click handler handle selection
+      }
+    };
+    document.addEventListener("click", handleCapture, true);
+    return () => document.removeEventListener("click", handleCapture, true);
+  }, [interactiveMode]);
+
+  // Attribute update helpers (unchanged)
   const updateAttribute = (attr: string, value: string, setter: (v: string) => void) => {
     if (!selectedElement) return;
     const appCode = files?.["src/App.jsx"];
@@ -204,14 +294,6 @@ export default function EditorPageContent() {
     setCustomAttrValue("");
   };
 
-  const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (interactiveMode && !e.shiftKey) return;
-    let target = e.target as HTMLElement;
-    while (target && !target.tagName) target = target.parentElement!;
-    if (!target) return;
-    handleSelectElement(target.tagName.toLowerCase());
-  };
-
   const handleFileTreeClick = () => {
     setIsFileTreeOpen(true);
     if (window.innerWidth < 768) setIsMobileSheetOpen(false);
@@ -222,7 +304,12 @@ export default function EditorPageContent() {
     setFileTreeInitialFile(null);
   };
 
-  // Sidebar tabs
+  const handleOpenFileInTree = (filePath: string) => {
+    setFileTreeInitialFile(filePath);
+    setIsFileTreeOpen(true);
+    if (window.innerWidth < 768) setIsMobileSheetOpen(false);
+  };
+
   const sidebarTabs: SidebarTab[] = [
     {
       id: "elements",
@@ -251,7 +338,6 @@ export default function EditorPageContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -284,6 +370,7 @@ export default function EditorPageContent() {
           isOpen={isLeftOpen}
           onToggle={() => setIsLeftOpen(!isLeftOpen)}
         />
+
         <div className="flex-1 flex flex-col min-w-0">
           <PreviewToolbar
             devicePreview={devicePreview}
@@ -302,11 +389,12 @@ export default function EditorPageContent() {
                 minHeight: "400px",
               }}
             >
-              <div ref={previewRef} onClick={handlePreviewClick} className="preview">
+              <div ref={previewRef} className="preview">
                 {previewMode === "full" ? (
-                  <DirectRenderer />
+                  <DirectRenderer key={filesKey} />
                 ) : (
                   <ComponentPreviewRenderer
+                    key={filesKey}
                     filePath={selectedFilePath}
                     onError={setPreviewError}
                   />
@@ -316,11 +404,11 @@ export default function EditorPageContent() {
           </div>
         </div>
 
-        {/* Desktop property panel */}
         <div className="hidden md:block w-72 border-l bg-muted/20 p-4 overflow-auto">
           <h3 className="font-semibold mb-4">Properties</h3>
           <PropertyPanel
             selectedElement={selectedElement}
+            selectedElementRaw={selectedElementRaw}
             classNameValue={selectedClassName}
             onClassNameChange={handleClassNameChange}
             idValue={selectedId}
@@ -365,6 +453,9 @@ export default function EditorPageContent() {
             onCustomAttrValueChange={setCustomAttrValue}
             onAddCustomAttr={handleAddCustomAttr}
             interactiveMode={interactiveMode}
+            isCustomComponent={isCustomComponent}
+            customComponentFilePath={customComponentFilePath}
+            onOpenFile={handleOpenFileInTree}
           />
         </div>
       </div>
@@ -373,6 +464,7 @@ export default function EditorPageContent() {
         isOpen={isMobileSheetOpen}
         onClose={() => setIsMobileSheetOpen(false)}
         selectedElement={selectedElement}
+        selectedElementRaw={selectedElementRaw}
         classNameValue={selectedClassName}
         onClassNameChange={handleClassNameChange}
         idValue={selectedId}
@@ -412,6 +504,9 @@ export default function EditorPageContent() {
         onClickValue={selectedOnClick}
         onOnClickChange={handleOnClickChange}
         interactiveMode={interactiveMode}
+        isCustomComponent={isCustomComponent}
+        customComponentFilePath={customComponentFilePath}
+        onOpenFile={handleOpenFileInTree}
       />
 
       <FileTreeSheet
