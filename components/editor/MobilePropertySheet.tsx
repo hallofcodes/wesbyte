@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { X, Settings } from "lucide-react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
 import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
-//mport { styleObjToCssString, cssStringToStyleObj } from "@/lib/styleUtils";
 
 export function MobilePropertySheet({
   isOpen,
@@ -45,7 +44,6 @@ export function MobilePropertySheet({
   onClickValue,
   onOnClickChange,
   interactiveMode,
-  // New props for custom attribute integration
   customAttrKey,
   customAttrValue,
   onCustomAttrKeyChange,
@@ -54,6 +52,9 @@ export function MobilePropertySheet({
 }: any) {
   const [stylesObj, setStylesObj] = useState<StyleValues>({});
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [showHeightMenu, setShowHeightMenu] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(60);
+  const [tempHeight, setTempHeight] = useState(60);
   const isInternalUpdate = useRef(false);
 
   useEffect(() => {
@@ -67,24 +68,20 @@ export function MobilePropertySheet({
     }
     setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
-  
-  useEffect(() => {
-  if (isInternalUpdate.current) {
-    isInternalUpdate.current = false;
-    return;
-  }
-  if (!styleValue) {
-    setStylesObj({});
-    return;
-  }
-  setStylesObj(stringToStyleObj(styleValue));
-}, [styleValue]);
 
   const handleStyleChange = (newStyles: StyleValues) => {
     isInternalUpdate.current = true;
     setStylesObj(newStyles);
     const newStyleStr = styleObjToString(newStyles);
     onStyleChange(newStyleStr);
+  };
+
+  const handleHeightSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTempHeight(Number(e.target.value));
+  };
+
+  const commitHeight = () => {
+    setSheetHeight(tempHeight);
   };
 
   if (!isOpen) return null;
@@ -98,18 +95,57 @@ export function MobilePropertySheet({
   ].includes(tagLower);
 
   return (
-    <div className="fixed md:hidden left-0 right-0 bottom-0 z-50 transition-transform duration-300 ease-out translate-y-0">
+    <div className="fixed inset-0 z-50 flex items-end md:hidden">
+      {/* Sheet panel (no backdrop) */}
       <div
-        className="bg-background border-t rounded-t-xl shadow-lg overflow-auto"
-        style={{ height: "55vh", maxHeight: "55vh" }}
+        className="relative bg-background w-full rounded-t-xl shadow-xl flex flex-col transition-all duration-300 ease-out"
+        style={{ maxHeight: `${sheetHeight}vh` }}
       >
-        <div className="sticky top-0 flex justify-between items-center p-3 border-b bg-background">
-          <h3 className="font-semibold">Properties</h3>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
+        {/* Drag handle (visual only) */}
+        <div className="flex justify-center pt-2">
+          <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
         </div>
-        <div className="p-4 space-y-4 overflow-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b">
+          <h3 className="font-semibold">Properties</h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHeightMenu(!showHeightMenu)}
+              className="p-1 rounded-md hover:bg-muted"
+              title="Adjust sheet height"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+            <button onClick={onClose} className="p-1 rounded-md hover:bg-muted">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        {/* Height menu (slider) */}
+        {showHeightMenu && (
+          <div className="absolute right-4 top-16 z-10 bg-popover border rounded-md shadow-md p-3 w-48">
+            <div className="text-xs font-medium text-muted-foreground mb-2">Sheet height: {tempHeight}%</div>
+            <input
+              type="range"
+              min="20"
+              max="80"
+              step="1"
+              value={tempHeight}
+              onChange={handleHeightSlider}
+              onMouseUp={commitHeight}
+              onTouchEnd={commitHeight}
+              className="w-full"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+              <span>20%</span>
+              <span>50%</span>
+              <span>80%</span>
+            </div>
+          </div>
+        )}
+        {/* Scrollable content */}
+        <div className="overflow-y-auto p-4 space-y-4" style={{ maxHeight: `calc(${sheetHeight}vh - 70px)` }}>
+          {/* (all content unchanged) */}
           {!selectedElement ? (
             <p className="text-muted-foreground text-sm">
               {interactiveMode
@@ -124,7 +160,7 @@ export function MobilePropertySheet({
                 <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
               </div>
 
-              {/* Basic attributes */}
+              {/* Class Name */}
               <div>
                 <label className="text-sm font-medium">Class Name</label>
                 <input
@@ -135,6 +171,7 @@ export function MobilePropertySheet({
                   className="w-full p-2 border rounded-md bg-background"
                 />
               </div>
+              {/* ID */}
               <div>
                 <label className="text-sm font-medium">ID</label>
                 <input
@@ -146,7 +183,7 @@ export function MobilePropertySheet({
                 />
               </div>
 
-              {/* Text content */}
+              {/* Text Content */}
               {!isVoid && textEditable && (
                 <div>
                   <label className="text-sm font-medium">Text Content</label>
@@ -228,7 +265,7 @@ export function MobilePropertySheet({
                 <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
               </div>
 
-              {/* Input/textarea specific */}
+              {/* Input specific */}
               {(tagLower === "input" || tagLower === "textarea") && (
                 <>
                   <div>
@@ -284,7 +321,7 @@ export function MobilePropertySheet({
                 />
               </div>
 
-              {/* ARIA attributes */}
+              {/* ARIA */}
               <div>
                 <label className="text-sm font-medium">Aria Label</label>
                 <input
@@ -305,7 +342,7 @@ export function MobilePropertySheet({
                 />
               </div>
 
-              {/* Event handler */}
+              {/* On Click */}
               <div>
                 <label className="text-sm font-medium">On Click</label>
                 <select
@@ -324,7 +361,7 @@ export function MobilePropertySheet({
                 </select>
               </div>
 
-              {/* Custom Attribute button */}
+              {/* Custom Attribute */}
               <div className="border-t pt-4">
                 <button
                   onClick={() => setShowCustomModal(true)}

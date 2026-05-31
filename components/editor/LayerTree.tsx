@@ -1,31 +1,111 @@
-"use client";
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Square, Heading1, Heading2, Heading3, AlignLeft, ButtonIcon, Image, Input as InputIcon, Link, Menu, Home, Info, Mail, Circle } from "lucide-react";
-import type { JsxNode } from "./editor-helpers";
-const tagIconMap: Record<string, React.ElementType> = {
-  div: Square, header: Menu, nav: Menu, main: Home, section: Info, article: Mail, footer: Mail,
-  h1: Heading1, h2: Heading2, h3: Heading3, p: AlignLeft, button: ButtonIcon, img: Image,
-  input: InputIcon, a: Link, ul: Menu, li: Circle, span: AlignLeft,
-};
-const FallbackIcon = Square;
-function TreeItem({ node, selectedTag, onSelect, depth = 0 }: { node: JsxNode; selectedTag: string | null; onSelect: (tag: string) => void; depth?: number }) {
-  const [isOpen, setIsOpen] = useState(true);
-  const hasChildren = node.children.length > 0;
-  const isSelected = selectedTag === node.tag;
-  const Icon = tagIconMap[node.tag] || FallbackIcon;
-  return (
-    <div className="relative">
-      {depth > 0 && <div className="absolute left-0 top-0 bottom-0 w-px bg-border" style={{ left: `${depth * 12 - 8}px` }} />}
-      <div className={`flex items-center gap-1 py-1 cursor-pointer hover:bg-muted rounded-md ${isSelected ? "bg-muted font-medium" : ""}`} style={{ paddingLeft: depth * 12 + 4 }} onClick={() => onSelect(node.tag)}>
-        {hasChildren && <button onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }} className="p-0.5">{isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}</button>}
-        {!hasChildren && <span className="w-4" />}
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-sm">{node.tag}</span>
+import { JsxNode } from "./editor-helpers";
+import {
+  Box,
+  Type,
+  Heading,
+  TextQuote,
+  SquareMousePointer,
+  Link,
+  Image,
+  Input,
+  ListChecks,
+  Table,
+  List,
+  Code,
+  Square,
+} from "lucide-react";
+
+interface LayerTreeProps {
+  nodes: JsxNode[];
+  selectedTag: string | null;
+  onSelect: (tag: string) => void;
+}
+
+function getIcon(tag: string) {
+  const lowerTag = tag.toLowerCase();
+  switch (lowerTag) {
+    case "div":
+      return Square;
+    case "h1":
+    case "h2":
+    case "h3":
+    case "h4":
+    case "h5":
+    case "h6":
+      return Heading;
+    case "p":
+      return TextQuote;
+    case "button":
+      return SquareMousePointer;
+    case "a":
+      return Link;
+    case "img":
+      return Image;
+    case "input":
+      return Input;
+    case "form":
+      return ListChecks;
+    case "table":
+      return Table;
+    case "ul":
+    case "li":
+      return List;
+    case "code":
+    case "pre":
+      return Code;
+    default:
+      return Box; // fallback
+  }
+}
+
+export function LayerTree({ nodes, selectedTag, onSelect }: LayerTreeProps) {
+  const renderNode = (node: JsxNode, depth: number = 0, isLast: boolean = false) => {
+    const Icon = getIcon(node.tag);
+    const isSelected = selectedTag === node.tag;
+    const hasChildren = node.children && node.children.length > 0;
+    const paddingLeft = depth * 20 + 16;
+
+    return (
+      <div key={node.tag + depth + node.children.length} className="relative">
+        {/* Vertical line connectors */}
+        {depth > 0 && (
+          <div
+            className="absolute left-4 top-0 bottom-0 w-px bg-border"
+            style={{ left: `${depth * 20 + 8}px` }}
+          />
+        )}
+        {depth > 0 && !isLast && (
+          <div
+            className="absolute w-3 h-px bg-border"
+            style={{ left: `${depth * 20 + 8}px`, top: '50%' }}
+          />
+        )}
+
+        <div
+          className={`flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer hover:bg-muted ${
+            isSelected ? "bg-primary/10 text-primary" : ""
+          }`}
+          style={{ paddingLeft: `${paddingLeft}px` }}
+          onClick={() => onSelect(node.tag)}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-mono">{node.tag}</span>
+        </div>
+
+        {hasChildren && (
+          <div className="ml-0">
+            {node.children.map((child, idx) =>
+              renderNode(child, depth + 1, idx === node.children.length - 1)
+            )}
+          </div>
+        )}
       </div>
-      {hasChildren && isOpen && <div>{node.children.map((child, idx) => <TreeItem key={idx} node={child} selectedTag={selectedTag} onSelect={onSelect} depth={depth + 1} />)}</div>}
+    );
+  };
+
+  return (
+    <div className="space-y-0.5">
+      {nodes.map((node, idx) => renderNode(node, 0, idx === nodes.length - 1))}
     </div>
   );
-}
-export function LayerTree({ nodes, selectedTag, onSelect }: { nodes: JsxNode[]; selectedTag: string | null; onSelect: (tag: string) => void }) {
-  return <div className="space-y-1">{nodes.map((node, idx) => <TreeItem key={idx} node={node} selectedTag={selectedTag} onSelect={onSelect} />)}</div>;
 }

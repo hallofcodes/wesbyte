@@ -4,10 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
 import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
 
-/*mport { styleObjToCssString, cssStringToStyleObj } from "@/lib/styleUtils";
-import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";*/
-
-
 export function PropertyPanel({
   selectedElement,
   classNameValue,

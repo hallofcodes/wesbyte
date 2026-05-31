@@ -111,8 +111,8 @@ export function FileTreeSheet({
     });
   };
 
-  const renderTree = (node: TreeNode, level = 0, collapsed = false) => {
-    const paddingStyle = collapsed ? { paddingLeft: "8px" } : { paddingLeft: `${level * 16 + 8}px` };
+  const renderTree = (node: TreeNode, level = 0) => {
+    const paddingStyle = { paddingLeft: `${level * 16 + 8}px` };
 
     if (node.type === "file") {
       return (
@@ -125,7 +125,7 @@ export function FileTreeSheet({
           onClick={() => handleFileSelect(node.path)}
         >
           <FileCode className="h-4 w-4 shrink-0" />
-          {!collapsed && <span className="truncate">{node.name}</span>}
+          <span className="truncate">{node.name}</span>
         </li>
       );
     }
@@ -147,11 +147,11 @@ export function FileTreeSheet({
           ) : (
             <Folder className="h-4 w-4 shrink-0 text-amber-500" />
           )}
-          {!collapsed && <span className="truncate">{node.name}</span>}
+          <span className="truncate">{node.name}</span>
         </div>
         {isOpen && node.children && (
           <ul className="list-none">
-            {Object.values(node.children).map((child) => renderTree(child, level + 1, collapsed))}
+            {Object.values(node.children).map((child) => renderTree(child, level + 1))}
           </ul>
         )}
       </li>
@@ -211,6 +211,10 @@ export function FileTreeSheet({
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
+  const expandSidebar = () => {
+    setSidebarCollapsed(false);
+  };
+
   const handleCreateFile = () => {
     setIsCreatingFile(true);
   };
@@ -264,25 +268,44 @@ module.exports = ${componentName};`;
           </SheetHeader>
 
           <div className="flex flex-1 overflow-hidden">
+            {/* Sidebar with smooth width transition */}
             <div
-              className={`border-r transition-all duration-200 ${
-                sidebarCollapsed ? "w-12" : "w-1/3 min-w-[180px]"
-              } overflow-x-hidden overflow-y-auto flex flex-col`}
+              className={`border-r transition-all duration-300 ease-out ${
+                sidebarCollapsed ? "w-12" : "w-64"
+              } overflow-x-hidden flex flex-col`}
             >
-              <div className={`flex ${sidebarCollapsed ? "flex-col items-center" : "justify-between items-center"} p-2 gap-2`}>
-                {!sidebarCollapsed && <h4 className="text-sm font-medium px-2">Files</h4>}
-                <div className={`flex ${sidebarCollapsed ? "flex-col" : "flex-row"} gap-1`}>
-                  <Button variant="ghost" size="icon" onClick={handleCreateFile} className="h-8 w-8" title="New file">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8" title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-                    {sidebarCollapsed ? <ChevronRightIcon className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {/* Expanded content */}
+              <div className={sidebarCollapsed ? "hidden" : "block"}>
+                <div className="flex justify-between items-center p-2 gap-2">
+                  <h4 className="text-sm font-medium px-2">Files</h4>
+                  <div className="flex flex-row gap-1">
+                    <Button variant="ghost" size="icon" onClick={handleCreateFile} className="h-8 w-8" title="New file">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8" title="Collapse sidebar">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <ul className="list-none p-2">
+                  {fileTree && renderTree(fileTree)}
+                </ul>
+              </div>
+
+              {/* Collapsed content */}
+              <div className={sidebarCollapsed ? "block" : "hidden"}>
+                <div className="flex flex-col items-center p-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={expandSidebar}
+                    className="h-8 w-8 mt-2"
+                    title="Expand file tree"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <ul className="list-none p-2">
-                {fileTree && renderTree(fileTree, 0, sidebarCollapsed)}
-              </ul>
             </div>
 
             {/* Code editor area */}

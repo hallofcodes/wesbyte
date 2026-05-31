@@ -10,7 +10,19 @@ export type JsxNode = {
 
 // ----- Layer tree parser (regex, unchanged) -----
 function regexParseJsxToTree(jsxCode: string): JsxNode[] {
-  const lines = jsxCode.split("\n");
+  // First, try to extract JSX if the code contains a function that returns JSX
+  let jsxString = jsxCode;
+  const returnMatch = jsxString.match(/return\s*\(\s*([\s\S]*?)\s*\)\s*;/);
+  if (returnMatch) {
+    jsxString = returnMatch[1];
+  } else {
+    // Also handle case where return is not wrapped in parentheses
+    const simpleReturn = jsxString.match(/return\s+([\s\S]*?);/);
+    if (simpleReturn) jsxString = simpleReturn[1];
+  }
+
+  // Now parse the JSX string (same as before)
+  const lines = jsxString.split("\n");
   const stack: { node: JsxNode; indent: number }[] = [];
   const roots: JsxNode[] = [];
 

@@ -4,14 +4,13 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
 import { ComponentPreviewRenderer } from "@/components/editor/ComponentPreviewRenderer";
-import { LeftSidebar } from "./LeftSidebar";
+import { LeftSidebar, SidebarTab } from "./LeftSidebar";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PropertyPanel } from "./PropertyPanel";
 import { MobilePropertySheet } from "./MobilePropertySheet";
 import {
   parseJsxToTree,
   getClassNameForTag,
-  setClassNameForTag,
   getAttributeForTag,
   setAttributeForTag,
   getTextForTag,
@@ -21,9 +20,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-react";
 import NextLink from "next/link";
 import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
-
-// Sidebar tabs
-import { SidebarTab } from "./LeftSidebar";
 import { ElementsTab } from "./SidebarTabs/ElementsTab";
 import { LayerTreeTab } from "./SidebarTabs/LayerTreeTab";
 
@@ -59,7 +55,7 @@ export default function EditorPageContent() {
   const [previewMode, setPreviewMode] = useState<"full" | "file">("full");
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Basic attributes
+  // Basic attributes state
   const [selectedClassName, setSelectedClassName] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedSrc, setSelectedSrc] = useState("");
@@ -82,7 +78,7 @@ export default function EditorPageContent() {
   const [customAttrKey, setCustomAttrKey] = useState("");
   const [customAttrValue, setCustomAttrValue] = useState("");
 
-  const { files, setFiles, updateFileContent, selectedFilePath } = useProjectStore();
+  const { files, setFiles, updateFileContent, selectedFilePath, setSelectedFilePath } = useProjectStore();
   const previewRef = useRef<HTMLDivElement>(null);
 
   // Inject mock project if empty
@@ -92,10 +88,18 @@ export default function EditorPageContent() {
     }
   }, [files, setFiles]);
 
-  const jsxTree = useMemo(() => {
-    const appCode = files?.["src/App.jsx"] || "";
-    return parseJsxToTree(appCode);
-  }, [files]);
+  // Dynamic layer tree – shows either App.jsx or the selected file (depending on preview mode)
+  const currentFileForLayerTree = useMemo(() => {
+    if (previewMode === "file" && selectedFilePath && files[selectedFilePath]) {
+      return selectedFilePath;
+    }
+    return "src/App.jsx";
+  }, [previewMode, selectedFilePath, files]);
+
+  const currentLayerTree = useMemo(() => {
+    const code = files?.[currentFileForLayerTree] || "";
+    return parseJsxToTree(code);
+  }, [files, currentFileForLayerTree]);
 
   // Global click capture for interactive mode
   useEffect(() => {
@@ -216,10 +220,9 @@ export default function EditorPageContent() {
   const handleCloseFileTree = () => {
     setIsFileTreeOpen(false);
     setFileTreeInitialFile(null);
-    // When closing file tree, reset preview mode to full app if needed? User preference.
   };
 
-  // Define sidebar tabs
+  // Sidebar tabs
   const sidebarTabs: SidebarTab[] = [
     {
       id: "elements",
@@ -233,9 +236,10 @@ export default function EditorPageContent() {
       label: "Layer Tree",
       content: (
         <LayerTreeTab
-          nodes={jsxTree}
+          nodes={currentLayerTree}
           selectedTag={selectedElement}
           onSelect={handleSelectElement}
+          title={`Structure: ${currentFileForLayerTree}`}
         />
       ),
     },
@@ -280,7 +284,6 @@ export default function EditorPageContent() {
           isOpen={isLeftOpen}
           onToggle={() => setIsLeftOpen(!isLeftOpen)}
         />
-
         <div className="flex-1 flex flex-col min-w-0">
           <PreviewToolbar
             devicePreview={devicePreview}
