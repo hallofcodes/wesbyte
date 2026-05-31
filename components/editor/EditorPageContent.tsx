@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
-import { LeftSidebar } from "./LeftSidebar";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PropertyPanel } from "./PropertyPanel";
 import { MobilePropertySheet } from "./MobilePropertySheet";
@@ -17,18 +16,11 @@ import {
   setTextForTag,
 } from "./editor-helpers";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download, Globe, Sparkles } from "lucide-react";
+import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-react";
 import NextLink from "next/link";
-
-const handleAddCustomAttr = () => {
-  if (!selectedElement) return;
-  const appCode = files?.["src/App.jsx"];
-  if (!appCode) return;
-  const newCode = setAttributeForTag(appCode, selectedElement, customAttrKey, customAttrValue);
-  updateFileContent("src/App.jsx", newCode);
-  setCustomAttrKey("");
-  setCustomAttrValue("");
-};
+import { LeftSidebar, SidebarTab } from "@/components/editor/LeftSidebar";
+import { ElementsTab } from "@/components/editor/SidebarTabs/ElementsTab";
+import { LayerTreeTab } from "@/components/editor/SidebarTabs/LayerTreeTab";
 
 const mockFiles = {
   "src/App.jsx": `const Header = require('src/Header.jsx');
@@ -223,6 +215,28 @@ export default function EditorPageContent() {
     console.log("Open file tree sheet - to be implemented");
   };
 
+  // Define sidebar tabs after all required variables are available
+  const sidebarTabs: SidebarTab[] = [
+    {
+      id: "elements",
+      icon: Box,
+      label: "Elements",
+      content: <ElementsTab onSelectElement={handleSelectElement} />,
+    },
+    {
+      id: "layerTree",
+      icon: FolderTree,
+      label: "Layer Tree",
+      content: (
+        <LayerTreeTab
+          nodes={jsxTree}
+          selectedTag={selectedElement}
+          onSelect={handleSelectElement}
+        />
+      ),
+    },
+  ];
+
   if (!files || Object.keys(files).length === 0) {
     return <div className="flex items-center justify-center h-screen">Loading project...</div>;
   }
@@ -256,14 +270,11 @@ export default function EditorPageContent() {
 
       <div className="flex-1 flex overflow-hidden">
         <LeftSidebar
+          tabs={sidebarTabs}
+          activeTabId={activeTab}
+          onTabChange={(tabId) => setActiveTab(tabId as "elements" | "layerTree")}
           isOpen={isLeftOpen}
           onToggle={() => setIsLeftOpen(!isLeftOpen)}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          layerTreeNodes={jsxTree}
-          selectedTag={selectedElement}
-          onSelectElement={handleSelectElement}
-          onInsertElement={() => {}}
         />
         <div className="flex-1 flex flex-col min-w-0">
           <PreviewToolbar
