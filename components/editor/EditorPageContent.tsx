@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
+import { LeftSidebar } from "./LeftSidebar";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PropertyPanel } from "./PropertyPanel";
 import { MobilePropertySheet } from "./MobilePropertySheet";
@@ -18,9 +19,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-react";
 import NextLink from "next/link";
-import { LeftSidebar, SidebarTab } from "@/components/editor/LeftSidebar";
-import { ElementsTab } from "@/components/editor/SidebarTabs/ElementsTab";
-import { LayerTreeTab } from "@/components/editor/SidebarTabs/LayerTreeTab";
+import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
+
+// Sidebar tabs (scalable)
+import { SidebarTab } from "./LeftSidebar";
+import { ElementsTab } from "./SidebarTabs/ElementsTab";
+import { LayerTreeTab } from "./SidebarTabs/LayerTreeTab";
 
 const mockFiles = {
   "src/App.jsx": `const Header = require('src/Header.jsx');
@@ -49,6 +53,10 @@ export default function EditorPageContent() {
   const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [interactiveMode, setInteractiveMode] = useState(true);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  
+  // File tree sheet state
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
+  const [fileTreeInitialFile, setFileTreeInitialFile] = useState<string | null>(null);
 
   // Basic attributes
   const [selectedClassName, setSelectedClassName] = useState("");
@@ -211,11 +219,18 @@ export default function EditorPageContent() {
     handleSelectElement(target.tagName.toLowerCase());
   };
 
+  // File tree handlers
   const handleFileTreeClick = () => {
-    console.log("Open file tree sheet - to be implemented");
+    setIsFileTreeOpen(true);
+    if (window.innerWidth < 768) setIsMobileSheetOpen(false); // close property sheet on mobile
   };
 
-  // Define sidebar tabs after all required variables are available
+  const handleCloseFileTree = () => {
+    setIsFileTreeOpen(false);
+    setFileTreeInitialFile(null);
+  };
+
+  // Define sidebar tabs (using the new scalable system)
   const sidebarTabs: SidebarTab[] = [
     {
       id: "elements",
@@ -243,7 +258,7 @@ export default function EditorPageContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header (Navbar) */}
+      {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -269,6 +284,7 @@ export default function EditorPageContent() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar - always rendered, now scalable */}
         <LeftSidebar
           tabs={sidebarTabs}
           activeTabId={activeTab}
@@ -276,6 +292,8 @@ export default function EditorPageContent() {
           isOpen={isLeftOpen}
           onToggle={() => setIsLeftOpen(!isLeftOpen)}
         />
+
+        {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0">
           <PreviewToolbar
             devicePreview={devicePreview}
@@ -300,6 +318,8 @@ export default function EditorPageContent() {
             </div>
           </div>
         </div>
+
+        {/* Desktop property panel */}
         <div className="hidden md:block w-72 border-l bg-muted/20 p-4 overflow-auto">
           <h3 className="font-semibold mb-4">Properties</h3>
           <PropertyPanel
@@ -351,6 +371,8 @@ export default function EditorPageContent() {
           />
         </div>
       </div>
+
+      {/* Mobile property sheet */}
       <MobilePropertySheet
         isOpen={isMobileSheetOpen}
         onClose={() => setIsMobileSheetOpen(false)}
@@ -394,6 +416,13 @@ export default function EditorPageContent() {
         onClickValue={selectedOnClick}
         onOnClickChange={handleOnClickChange}
         interactiveMode={interactiveMode}
+      />
+
+      {/* File tree sheet (shared) */}
+      <FileTreeSheet
+        isOpen={isFileTreeOpen}
+        onClose={handleCloseFileTree}
+        initialFilePath={fileTreeInitialFile}
       />
     </div>
   );

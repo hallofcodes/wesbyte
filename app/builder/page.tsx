@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Sparkles,
   Wand2,
@@ -24,6 +23,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
 import { useAIStore } from "@/store";
 import Link from "next/link";
+import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
 
 const examplePrompts = [
   "Create a modern landing page for a tech startup",
@@ -35,8 +35,6 @@ const examplePrompts = [
 
 export default function BuilderPage() {
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
-  const [editContent, setEditContent] = useState("");
-
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -45,8 +43,7 @@ export default function BuilderPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
-  
-  const { files, selectedFilePath, setSelectedFilePath, updateFileContent, setFiles } = useProjectStore();
+  const { files, setFiles } = useProjectStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,12 +51,10 @@ export default function BuilderPage() {
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isGenerating) return;
-
     setIsGenerating(true);
     const userPrompt = prompt;
     setPrompt("");
     addMessage("user", userPrompt);
-
     try {
       const files = await generateProject(userPrompt);
       setFiles(files);
@@ -72,36 +67,19 @@ export default function BuilderPage() {
       setIsGenerating(false);
     }
   }, [prompt, isGenerating, setIsGenerating, addMessage, setFiles]);
-  const handleSelectFile = (path: string) => {
-  setSelectedFilePath(path);
-  setEditContent(files[path]);
-};
 
-const handleSaveFile = () => {
-  if (selectedFilePath && editContent !== files[selectedFilePath]) {
-    updateFileContent(selectedFilePath, editContent);
-  }
-  setIsFileTreeOpen(false);
-};
   const handleSuggestionClick = (suggestion: string) => {
     setPrompt(suggestion);
     setShowSuggestions(false);
   };
 
-  const renderPreviewContent = () => <DirectRenderer />;
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
+      {/* Header (unchanged) */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
         <div className="flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setIsChatOpen(true)}
-            >
+            <Button variant="outline" size="icon" className="md:hidden" onClick={() => setIsChatOpen(true)}>
               <PanelLeft className="h-4 w-4" />
             </Button>
             <Link href="/" className="flex items-center gap-2 shrink-0">
@@ -124,35 +102,17 @@ const handleSaveFile = () => {
 
       {/* Overlay for mobile sidebar */}
       {isChatOpen && (
-        <div
-          className="fixed inset-0 bg-black/40 z-30 md:hidden"
-          onClick={() => setIsChatOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={() => setIsChatOpen(false)} />
       )}
 
       {/* Horizontal layout */}
       <div className="flex-1 flex flex-row overflow-auto min-h-0">
-        {/* Chat Panel */}
-        <div
-          className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${
-            isChatOpen ? "translate-x-0" : "-translate-x-full"
-          } md:flex md:shrink-0`}
-        >
+        {/* Chat Panel (unchanged) */}
+        <div className={`fixed mt-16 md:mt-0 inset-y-0 left-0 z-40 w-[320px] max-w-[85vw] border-r bg-background flex flex-col transform transition-transform duration-200 md:static md:z-auto md:w-[400px] md:translate-x-0 ${isChatOpen ? "translate-x-0" : "-translate-x-full"} md:flex md:shrink-0`}>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message) => (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-lg px-4 py-2 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
+              <motion.div key={message.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[85%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </motion.div>
@@ -165,11 +125,7 @@ const handleSaveFile = () => {
                 </div>
                 <div className="space-y-2">
                   {examplePrompts.map((example, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSuggestionClick(example)}
-                      className="w-full text-left text-sm p-3 rounded-lg border bg-card hover:bg-muted transition-colors"
-                    >
+                    <button key={idx} onClick={() => handleSuggestionClick(example)} className="w-full text-left text-sm p-3 rounded-lg border bg-card hover:bg-muted transition-colors">
                       {example}
                     </button>
                   ))}
@@ -188,123 +144,50 @@ const handleSaveFile = () => {
             )}
             <div ref={messagesEndRef} />
           </div>
-
-          {/* Input area */}
           <div className="border-t p-4 space-y-3 bg-background flex-shrink-0">
             <div className="relative">
-              <Textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe your website..."
-                className="min-h-[100px] pr-12 resize-none"
-                disabled={isGenerating}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleGenerate()}
-              />
-              <Button
-                size="icon"
-                className="absolute right-2 bottom-2"
-                onClick={handleGenerate}
-                disabled={!prompt.trim() || isGenerating}
-              >
-                {isGenerating ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+              <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe your website..." className="min-h-[100px] pr-12 resize-none" disabled={isGenerating} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleGenerate()} />
+              <Button size="icon" className="absolute right-2 bottom-2" onClick={handleGenerate} disabled={!prompt.trim() || isGenerating}>
+                {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => setPrompt("Add a pricing table")}
-                disabled={isGenerating}
-              >
-                Add Pricing
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => setPrompt("Add testimonials")}
-                disabled={isGenerating}
-              >
-                Add Testimonials
-              </Button>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => setPrompt("Add a pricing table")} disabled={isGenerating}>Add Pricing</Button>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => setPrompt("Add testimonials")} disabled={isGenerating}>Add Testimonials</Button>
             </div>
-            <p className="text-xs text-muted-foreground text-center">
-              Be specific about style, sections, and purpose.
-            </p>
+            <p className="text-xs text-muted-foreground text-center">Be specific about style, sections, and purpose.</p>
           </div>
         </div>
 
-        {/* Preview Panel */}
+        {/* Preview Panel (unchanged except File Tree button) */}
         <div className="flex-1 flex flex-col min-w-0 h-full">
-          {/* Top bar with device switcher */}
           <div className="border-b p-4 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-  <span className="text-sm font-medium text-muted-foreground">Preview</span>
-  <div className="flex items-center gap-2">
-    {/* Device switcher group */}
-    <div className="flex items-center border rounded-lg overflow-hidden">
-      {[
-        { device: "desktop", icon: Monitor },
-        { device: "tablet", icon: Tablet },
-        { device: "mobile", icon: Smartphone },
-      ].map(({ device, icon: Icon }) => (
-        <button
-          key={device}
-          onClick={() => setDevicePreview(device as any)}
-          className={`p-2 ${
-            devicePreview === device
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted"
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-        </button>
-      ))}
-    </div>
-    {/* File Tree button – separate component */}
-    <button
-  onClick={() => setIsFileTreeOpen(true)}
-  className="p-2 rounded-lg border border-dashed hover:bg-muted flex items-center gap-1.5 transition-colors"
->
-  <FolderTree className="h-4 w-4" />
-  <span className="hidden sm:inline text-sm">Files</span>
-</button>
-  </div>
-</div>
-          {/* Center stage with device wrapper */}
+            <span className="text-sm font-medium text-muted-foreground">Preview</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border rounded-lg overflow-hidden">
+                {[
+                  { device: "desktop", icon: Monitor },
+                  { device: "tablet", icon: Tablet },
+                  { device: "mobile", icon: Smartphone },
+                ].map(({ device, icon: Icon }) => (
+                  <button key={device} onClick={() => setDevicePreview(device as any)} className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                    <Icon className="h-4 w-4" />
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setIsFileTreeOpen(true)} className="p-2 rounded-lg border border-dashed hover:bg-muted flex items-center gap-1.5 transition-colors">
+                <FolderTree className="h-4 w-4" />
+                <span className="hidden sm:inline text-sm">Files</span>
+              </button>
+            </div>
+          </div>
           <div className="flex-1 bg-muted/30 overflow-auto flex items-center justify-center p-6">
-            <div
-              className="shadow-2xl bg-background overflow-hidden flex flex-col"
-              style={{
-                width:
-                  devicePreview === "desktop"
-                    ? "min(1200px, 100%)"
-                    : devicePreview === "tablet"
-                    ? "min(820px, 100%)"
-                    : "min(390px, 100%)",
-                aspectRatio:
-                  devicePreview === "desktop"
-                    ? "16 / 10"
-                    : devicePreview === "tablet"
-                    ? "4 / 3"
-                    : "9 / 19.5",
-                border:
-                  devicePreview === "desktop"
-                    ? "1px solid #e5e7eb"
-                    : "10px solid #1f2937",
-                borderRadius:
-                  devicePreview === "desktop"
-                    ? "12px"
-                    : devicePreview === "tablet"
-                    ? "28px"
-                    : "36px",
-              }}
-            >
-              {/* Desktop chrome */}
+            <div className="shadow-2xl bg-background overflow-hidden flex flex-col" style={{
+              width: devicePreview === "desktop" ? "min(1200px, 100%)" : devicePreview === "tablet" ? "min(820px, 100%)" : "min(390px, 100%)",
+              aspectRatio: devicePreview === "desktop" ? "16 / 10" : devicePreview === "tablet" ? "4 / 3" : "9 / 19.5",
+              border: devicePreview === "desktop" ? "1px solid #e5e7eb" : "10px solid #1f2937",
+              borderRadius: devicePreview === "desktop" ? "12px" : devicePreview === "tablet" ? "28px" : "36px",
+            }}>
               {devicePreview === "desktop" && (
                 <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3 flex-shrink-0">
                   <div className="flex gap-1.5">
@@ -320,22 +203,16 @@ const handleSaveFile = () => {
                   </div>
                 </div>
               )}
-
-              {/* Phone/tablet top notch */}
               {(devicePreview === "mobile" || devicePreview === "tablet") && (
                 <div className="h-4 bg-gray-800 flex-shrink-0 relative">
                   <div className="absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-600/70" />
                 </div>
               )}
-
-              {/* Content area – the sandbox */}
               <div className="flex-1 overflow-y-auto">
                 <div className="preview">
-                {renderPreviewContent()}
+                  <DirectRenderer />
                 </div>
               </div>
-
-              {/* Phone/tablet bottom gesture bar */}
               {(devicePreview === "mobile" || devicePreview === "tablet") && (
                 <div className="h-4 bg-gray-800 flex-shrink-0 relative">
                   <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
@@ -345,61 +222,15 @@ const handleSaveFile = () => {
               )}
             </div>
           </div>
-       </div>
+        </div>
       </div>
+
       {/* File Tree Sheet */}
-<Sheet open={isFileTreeOpen} onOpenChange={setIsFileTreeOpen}>
-  <SheetContent side="right" className="w-[90vw] sm:w-[700px] p-0 flex flex-col">
-    <SheetHeader className="p-4 border-b">
-      <SheetTitle>Project Files</SheetTitle>
-    </SheetHeader>
-    <div className="flex flex-1 overflow-hidden">
-      {/* File list sidebar */}
-      <div className="w-1/3 border-r overflow-auto p-2">
-        <h4 className="text-sm font-medium mb-2 px-2">Files</h4>
-        <ul className="space-y-1">
-          {Object.keys(files).map((path) => (
-            <li
-              key={path}
-              className={`text-sm p-2 rounded-md cursor-pointer hover:bg-muted ${
-                selectedFilePath === path ? "bg-muted font-medium" : ""
-              }`}
-              onClick={() => handleSelectFile(path)}
-            >
-              {path}
-            </li>
-          ))}
-        </ul>
-      </div>
-      {/* Editor area */}
-      <div className="flex-1 flex flex-col p-4 overflow-auto">
-        {selectedFilePath ? (
-          <>
-            <div className="text-sm text-muted-foreground mb-2">
-              {selectedFilePath}
-            </div>
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="flex-1 font-mono text-sm"
-              style={{ minHeight: "300px" }}
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsFileTreeOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveFile}>Save Changes</Button>
-            </div>
-          </>
-        ) : (
-          <div className="text-center text-muted-foreground mt-8">
-            Select a file to edit
-          </div>
-        )}
-      </div>
-    </div>
-  </SheetContent>
-</Sheet>
+      <FileTreeSheet
+        isOpen={isFileTreeOpen}
+        onClose={() => setIsFileTreeOpen(false)}
+        initialFilePath={null}
+      />
     </div>
   );
 }
