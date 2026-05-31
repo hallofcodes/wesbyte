@@ -137,3 +137,12 @@
 .preview * {
   all: revert;
 }
+
+input[type="range"] {
+  touch-action: none;
+}
+.left-sidebar button:focus,
+.left-sidebar button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

@@ -1,28 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
-import { HexColorPicker } from "react-colorful";
+import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
 
-// Helper to convert style object to string for JSX
-function styleObjToString(styles: StyleValues): string {
-  const entries = Object.entries(styles).filter(([_, v]) => v && v !== "");
-  if (entries.length === 0) return "";
-  const inner = entries.map(([k, v]) => `${k}: ${typeof v === "string" && v.includes(" ") ? `"${v}"` : v}`).join(", ");
-  return `{ ${inner} }`;
-}
+/*mport { styleObjToCssString, cssStringToStyleObj } from "@/lib/styleUtils";
+import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";*/
 
-function stringToStyleObj(str: string): StyleValues {
-  if (!str || str === "{}") return {};
-  try {
-    // Remove outer braces
-    const cleaned = str.slice(1, -1).trim();
-    const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
-    return parsed;
-  } catch {
-    return {};
-  }
-}
 
 export function PropertyPanel({
   selectedElement,
@@ -44,10 +28,7 @@ export function PropertyPanel({
   onRelChange,
   styleValue,
   onStyleChange,
-  widthValue,
-  onWidthChange,
-  heightValue,
-  onHeightChange,
+  // Removed width/height props – they are now only in StyleEditor
   placeholderValue,
   onPlaceholderChange,
   disabledChecked,
@@ -73,16 +54,34 @@ export function PropertyPanel({
 }: any) {
   const [stylesObj, setStylesObj] = useState<StyleValues>({});
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const isInternalUpdate = useRef(false);
 
   useEffect(() => {
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
     if (!styleValue) {
       setStylesObj({});
       return;
     }
     setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
+  
+  useEffect(() => {
+  if (isInternalUpdate.current) {
+    isInternalUpdate.current = false;
+    return;
+  }
+  if (!styleValue) {
+    setStylesObj({});
+    return;
+  }
+  setStylesObj(stringToStyleObj(styleValue));
+}, [styleValue]);
 
   const handleStyleChange = (newStyles: StyleValues) => {
+    isInternalUpdate.current = true;
     setStylesObj(newStyles);
     const newStyleStr = styleObjToString(newStyles);
     onStyleChange(newStyleStr);
@@ -108,11 +107,13 @@ export function PropertyPanel({
 
   return (
     <div className="space-y-4">
-      {/* Basic attributes */}
+      {/* Tag */}
       <div>
         <label className="text-sm font-medium">Tag</label>
         <div className="mt-1 p-2 border rounded-md bg-muted/30">{selectedElement}</div>
       </div>
+
+      {/* Basic attributes */}
       <div>
         <label className="text-sm font-medium">Class Name</label>
         <input
@@ -133,6 +134,8 @@ export function PropertyPanel({
           className="w-full p-2 border rounded-md bg-background"
         />
       </div>
+
+      {/* Text content */}
       {!isVoid && textEditable && (
         <div>
           <label className="text-sm font-medium">Text Content</label>
@@ -208,36 +211,12 @@ export function PropertyPanel({
         </>
       )}
 
-      {/* Style Editor */}
+      {/* Style Editor (includes width/height, margin, padding, colors, etc.) */}
       <div>
         <div className="flex justify-between items-center">
           <label className="text-sm font-medium">Visual Styles</label>
         </div>
         <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
-      </div>
-
-      {/* Width/Height (already in style editor, but we also keep them as top-level for quick access?) – optional, but kept for backward compatibility */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-sm font-medium">Width</label>
-          <input
-            type="text"
-            value={widthValue}
-            onChange={(e) => onWidthChange(e.target.value)}
-            placeholder="auto"
-            className="w-full p-2 border rounded-md bg-background"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Height</label>
-          <input
-            type="text"
-            value={heightValue}
-            onChange={(e) => onHeightChange(e.target.value)}
-            placeholder="auto"
-            className="w-full p-2 border rounded-md bg-background"
-          />
-        </div>
       </div>
 
       {/* Input/textarea specific */}
@@ -346,7 +325,7 @@ export function PropertyPanel({
         </button>
       </div>
 
-      {/* Custom Attribute Modal (native HTML dialog) */}
+      {/* Custom Attribute Modal */}
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background rounded-lg p-6 w-96">

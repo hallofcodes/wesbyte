@@ -1,26 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { StyleEditor, StyleValues } from "./StyleEditor";
-
-function styleObjToString(styles: StyleValues): string {
-  const entries = Object.entries(styles).filter(([_, v]) => v && v !== "");
-  if (entries.length === 0) return "";
-  const inner = entries.map(([k, v]) => `${k}: ${typeof v === "string" && v.includes(" ") ? `"${v}"` : v}`).join(", ");
-  return `{ ${inner} }`;
-}
-
-function stringToStyleObj(str: string): StyleValues {
-  if (!str || str === "{}") return {};
-  try {
-    const cleaned = str.slice(1, -1).trim();
-    const parsed = Function(`"use strict"; return ({ ${cleaned} })`)();
-    return parsed;
-  } catch {
-    return {};
-  }
-}
+import { styleObjToString, stringToStyleObj } from "@/lib/styleUtils";
+//mport { styleObjToCssString, cssStringToStyleObj } from "@/lib/styleUtils";
 
 export function MobilePropertySheet({
   isOpen,
@@ -44,10 +28,6 @@ export function MobilePropertySheet({
   onRelChange,
   styleValue,
   onStyleChange,
-  widthValue,
-  onWidthChange,
-  heightValue,
-  onHeightChange,
   placeholderValue,
   onPlaceholderChange,
   disabledChecked,
@@ -65,34 +45,46 @@ export function MobilePropertySheet({
   onClickValue,
   onOnClickChange,
   interactiveMode,
+  // New props for custom attribute integration
+  customAttrKey,
+  customAttrValue,
+  onCustomAttrKeyChange,
+  onCustomAttrValueChange,
+  onAddCustomAttr,
 }: any) {
   const [stylesObj, setStylesObj] = useState<StyleValues>({});
   const [showCustomModal, setShowCustomModal] = useState(false);
-  const [customAttrKey, setCustomAttrKey] = useState("");
-  const [customAttrValue, setCustomAttrValue] = useState("");
+  const isInternalUpdate = useRef(false);
 
   useEffect(() => {
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
     if (!styleValue) {
       setStylesObj({});
       return;
     }
     setStylesObj(stringToStyleObj(styleValue));
   }, [styleValue]);
+  
+  useEffect(() => {
+  if (isInternalUpdate.current) {
+    isInternalUpdate.current = false;
+    return;
+  }
+  if (!styleValue) {
+    setStylesObj({});
+    return;
+  }
+  setStylesObj(stringToStyleObj(styleValue));
+}, [styleValue]);
 
   const handleStyleChange = (newStyles: StyleValues) => {
+    isInternalUpdate.current = true;
     setStylesObj(newStyles);
     const newStyleStr = styleObjToString(newStyles);
     onStyleChange(newStyleStr);
-  };
-
-  const handleAddCustomAttr = () => {
-    if (!selectedElement || !customAttrKey) return;
-    // This should call the parent's add custom attribute function
-    // We need to pass it from EditorPageContent. For now, we'll just close the modal
-    console.log("Add custom attribute", customAttrKey, customAttrValue);
-    setShowCustomModal(false);
-    setCustomAttrKey("");
-    setCustomAttrValue("");
   };
 
   if (!isOpen) return null;
@@ -236,30 +228,6 @@ export function MobilePropertySheet({
                 <StyleEditor styles={stylesObj} onChange={handleStyleChange} />
               </div>
 
-              {/* Width/Height (optional, also available in style editor) */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-sm font-medium">Width</label>
-                  <input
-                    type="text"
-                    value={widthValue}
-                    onChange={(e) => onWidthChange(e.target.value)}
-                    placeholder="auto"
-                    className="w-full p-2 border rounded-md bg-background"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Height</label>
-                  <input
-                    type="text"
-                    value={heightValue}
-                    onChange={(e) => onHeightChange(e.target.value)}
-                    placeholder="auto"
-                    className="w-full p-2 border rounded-md bg-background"
-                  />
-                </div>
-              </div>
-
               {/* Input/textarea specific */}
               {(tagLower === "input" || tagLower === "textarea") && (
                 <>
@@ -379,14 +347,14 @@ export function MobilePropertySheet({
               <input
                 type="text"
                 value={customAttrKey}
-                onChange={(e) => setCustomAttrKey(e.target.value)}
+                onChange={(e) => onCustomAttrKeyChange(e.target.value)}
                 placeholder="Attribute name"
                 className="w-full p-2 border rounded-md"
               />
               <input
                 type="text"
                 value={customAttrValue}
-                onChange={(e) => setCustomAttrValue(e.target.value)}
+                onChange={(e) => onCustomAttrValueChange(e.target.value)}
                 placeholder="Value"
                 className="w-full p-2 border rounded-md"
               />
@@ -398,7 +366,10 @@ export function MobilePropertySheet({
                   Cancel
                 </button>
                 <button
-                  onClick={handleAddCustomAttr}
+                  onClick={() => {
+                    onAddCustomAttr();
+                    setShowCustomModal(false);
+                  }}
                   className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md"
                 >
                   Add

@@ -99,6 +99,10 @@ function createJSXAttributeValue(value: string): t.JSXAttribute["value"] {
       return t.stringLiteral(trimmed);
     }
   }
+  if (attrName === "style") {
+  console.log("Style value before parsing:", value);
+  console.log("Trimmed starts with { ?", trimmed.startsWith("{"));
+}
   // Default: string literal
   return t.stringLiteral(trimmed);
 }
