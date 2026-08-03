@@ -3,11 +3,11 @@ import { create } from 'zustand';
 interface ProjectStore {
   files: Record<string, string>;
   compiledFiles: Record<string, string>;
-  selectedFilePath: string | null;          // 👈 new
+  selectedFilePath: string | null;
   setFiles: (files: Record<string, string>) => void;
   setCompiledFile: (path: string, code: string) => void;
-  setSelectedFilePath: (path: string | null) => void; // 👈 new
-  updateFileContent: (path: string, content: string) => void; // 👈 new
+  setSelectedFilePath: (path: string | null) => void;
+  updateFileContent: (path: string, content: string) => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({

@@ -7,12 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import {
   Sparkles,
-  Wand2,
   Send,
   ArrowRight,
-  Monitor,
-  Tablet,
-  Smartphone,
   RefreshCw,
   Lightbulb,
   PanelLeft,
@@ -24,6 +20,7 @@ import { DirectRenderer } from "@/components/editor/DirectRenderer";
 import { useAIStore } from "@/store";
 import Link from "next/link";
 import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
+import { DEVICE_OPTIONS, type DevicePreview } from "@/components/editor/PreviewToolbar";
 
 const examplePrompts = [
   "Create a modern landing page for a tech startup",
@@ -39,7 +36,7 @@ export default function BuilderPage() {
   const [prompt, setPrompt] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [devicePreview, setDevicePreview] = useState<DevicePreview>("desktop");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { isGenerating, messages, setIsGenerating, addMessage } = useAIStore();
@@ -56,9 +53,16 @@ export default function BuilderPage() {
     setPrompt("");
     addMessage("user", userPrompt);
     try {
-      const files = await generateProject(userPrompt);
-      setFiles(files);
-      addMessage("assistant", "Generated project with multiple files.");
+      const result = await generateProject(userPrompt);
+      setFiles(result.files);
+      if (result.usedFallback) {
+        addMessage(
+          "assistant",
+          "No AI API key is configured on the server, so I generated a starter template based on your prompt instead. Set ANTHROPIC_API_KEY to enable real AI generation."
+        );
+      } else {
+        addMessage("assistant", "Generated your project.");
+      }
       setShowSuggestions(false);
     } catch (error) {
       console.error(error);
@@ -165,12 +169,8 @@ export default function BuilderPage() {
             <span className="text-sm font-medium text-muted-foreground">Preview</span>
             <div className="flex items-center gap-2">
               <div className="flex items-center border rounded-lg overflow-hidden">
-                {[
-                  { device: "desktop", icon: Monitor },
-                  { device: "tablet", icon: Tablet },
-                  { device: "mobile", icon: Smartphone },
-                ].map(({ device, icon: Icon }) => (
-                  <button key={device} onClick={() => setDevicePreview(device as any)} className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                {DEVICE_OPTIONS.map(({ device, icon: Icon }) => (
+                  <button key={device} onClick={() => setDevicePreview(device)} className={`p-2 ${devicePreview === device ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                     <Icon className="h-4 w-4" />
                   </button>
                 ))}

@@ -111,10 +111,6 @@ function createJSXAttributeValue(value: string): t.JSXAttribute["value"] {
       return t.stringLiteral(trimmed);
     }
   }
-  if (attrName === "style") {
-  console.log("Style value before parsing:", value);
-  console.log("Trimmed starts with { ?", trimmed.startsWith("{"));
-}
   // Default: string literal
   return t.stringLiteral(trimmed);
 }
@@ -195,6 +191,106 @@ export function setTextForTag(jsxCode: string, tag: string, text: string): strin
   if (!element) return jsxCode;
   // Replace all children with a single JSXText node
   element.children = [t.jsxText(text)];
+  const output = generate(ast, { retainLines: false, compact: false });
+  return output.code;
+}
+
+/** Drag payload MIME types, shared between the palette (insert) and canvas (move). */
+export const WESBYTE_INSERT_MIME = "application/x-wesbyte-insert";
+export const WESBYTE_MOVE_MIME = "application/x-wesbyte-move";
+
+function findNthElementPathByTag(ast: any, tagName: string, occurrence: number) {
+  let count = -1;
+  let foundPath: any = null;
+  traverse(ast, {
+    JSXElement(path) {
+      if (foundPath) return;
+      if (path.node.openingElement.name.name === tagName) {
+        count++;
+        if (count === occurrence) foundPath = path;
+      }
+    },
+  });
+  return foundPath;
+}
+
+/**
+ * Inserts `newElementJsx` (a JSX snippet, e.g. "<button>Click</button>") before or after
+ * the nth element matching `targetTag` (0-indexed, in document order — matching how the
+ * browser DOM enumerates elements, so the client can count preceding same-tag siblings to
+ * find the right instance even when a tag appears more than once on the page).
+ *
+ * If the target is the component's root returned element (no sibling array to insert
+ * into), the new element is nested inside it instead.
+ */
+export function insertElementNearTag(
+  jsxCode: string,
+  targetTag: string,
+  newElementJsx: string,
+  occurrence = 0,
+  placement: "before" | "after" = "after"
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const targetPath = findNthElementPathByTag(ast, targetTag, occurrence);
+  if (!targetPath) return jsxCode;
+
+  let newNode: t.Node;
+  try {
+    newNode = parser.parseExpression(newElementJsx, { plugins: ["jsx"] } as any);
+  } catch {
+    return jsxCode;
+  }
+  if (!t.isJSXElement(newNode) && !t.isJSXFragment(newNode)) return jsxCode;
+
+  const parent = targetPath.parent;
+  const parentIsJsxContainer = t.isJSXElement(parent) || t.isJSXFragment(parent);
+
+  if (parentIsJsxContainer) {
+    if (placement === "before") targetPath.insertBefore(newNode);
+    else targetPath.insertAfter(newNode);
+  } else {
+    // Target is the component's root JSX node (e.g. the outer <div> returned by App).
+    // There's no sibling list to insert into, so nest the new element inside it.
+    if (placement === "before") targetPath.node.children.unshift(t.jsxText("\n  "), newNode as t.JSXElement);
+    else targetPath.node.children.push(t.jsxText("\n  "), newNode as t.JSXElement);
+  }
+
+  const output = generate(ast, { retainLines: false, compact: false });
+  return output.code;
+}
+
+/**
+ * Moves an existing element (identified by tag + nth-occurrence) to sit before/after
+ * another element (also identified by tag + nth-occurrence). Both occurrence indices
+ * should be computed by the caller against the *same* pre-move DOM snapshot — since this
+ * runs as a single AST pass, removing the source node before locating the target (both
+ * paths are found up front, in the original tree) keeps the indices consistent even when
+ * source and target share a tag name.
+ */
+export function moveElementNearTag(
+  jsxCode: string,
+  source: { tag: string; occurrence: number },
+  target: { tag: string; occurrence: number },
+  placement: "before" | "after"
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const sourcePath = findNthElementPathByTag(ast, source.tag, source.occurrence);
+  const targetPath = findNthElementPathByTag(ast, target.tag, target.occurrence);
+  if (!sourcePath || !targetPath || sourcePath.node === targetPath.node) return jsxCode;
+
+  // Refuse to drop an element inside (or next to, via its own descendant) itself.
+  let ancestor = targetPath.parentPath;
+  while (ancestor) {
+    if (ancestor.node === sourcePath.node) return jsxCode;
+    ancestor = ancestor.parentPath;
+  }
+
+  const movedNode = t.cloneNode(sourcePath.node, true);
+  sourcePath.remove();
+
+  if (placement === "before") targetPath.insertBefore(movedNode);
+  else targetPath.insertAfter(movedNode);
+
   const output = generate(ast, { retainLines: false, compact: false });
   return output.code;
 }

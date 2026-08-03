@@ -14,22 +14,6 @@ import {
   ComponentStyles,
 } from '@/types';
 
-interface HistoryState {
-  past: WebsitePage[];
-  future: WebsitePage[];
-}
-
-interface EditorState {
-  selectedComponentId: string | null;
-  hoveredComponentId: string | null;
-  isDragging: boolean;
-  devicePreview: 'desktop' | 'tablet' | 'mobile';
-  sidebarTab: 'components' | 'layers' | 'settings';
-  zoom: number;
-  showGrid: boolean;
-  snapToGrid: boolean;
-}
-
 interface AIState {
   isGenerating: boolean;
   messages: AIMessage[];
@@ -65,26 +49,6 @@ interface WebsiteState {
 
   // Settings
   updateSettings: (updates: Partial<WebsiteSettings>) => void;
-}
-
-interface EditorStore extends EditorState {
-  setSelectedComponent: (id: string | null) => void;
-  setHoveredComponent: (id: string | null) => void;
-  setIsDragging: (isDragging: boolean) => void;
-  setDevicePreview: (device: 'desktop' | 'tablet' | 'mobile') => void;
-  setSidebarTab: (tab: 'components' | 'layers' | 'settings') => void;
-  setZoom: (zoom: number) => void;
-  toggleGrid: () => void;
-  toggleSnapToGrid: () => void;
-}
-
-interface HistoryStore extends HistoryState {
-  pushHistory: (page: WebsitePage) => void;
-  undo: () => WebsitePage | null;
-  redo: () => WebsitePage | null;
-  canUndo: () => boolean;
-  canRedo: () => boolean;
-  clearHistory: () => void;
 }
 
 interface AIStore extends AIState {
@@ -428,127 +392,6 @@ export const useWebsiteStore = create<WebsiteState>()(
   )
 );
 
-// Editor Store
-export const useEditorStore = create<EditorStore>()(
-  devtools(
-    immer((set) => ({
-      selectedComponentId: null,
-      hoveredComponentId: null,
-      isDragging: false,
-      devicePreview: 'desktop',
-      sidebarTab: 'components',
-      zoom: 100,
-      showGrid: true,
-      snapToGrid: true,
-
-      setSelectedComponent: (id) =>
-        set((state) => {
-          state.selectedComponentId = id;
-        }),
-
-      setHoveredComponent: (id) =>
-        set((state) => {
-          state.hoveredComponentId = id;
-        }),
-
-      setIsDragging: (isDragging) =>
-        set((state) => {
-          state.isDragging = isDragging;
-        }),
-
-      setDevicePreview: (device) =>
-        set((state) => {
-          state.devicePreview = device;
-        }),
-
-      setSidebarTab: (tab) =>
-        set((state) => {
-          state.sidebarTab = tab;
-        }),
-
-      setZoom: (zoom) =>
-        set((state) => {
-          state.zoom = Math.max(25, Math.min(200, zoom));
-        }),
-
-      toggleGrid: () =>
-        set((state) => {
-          state.showGrid = !state.showGrid;
-        }),
-
-      toggleSnapToGrid: () =>
-        set((state) => {
-          state.snapToGrid = !state.snapToGrid;
-        }),
-    })),
-    { name: 'editor-store' }
-  )
-);
-
-// History Store
-export const useHistoryStore = create<HistoryStore>()(
-  devtools(
-    immer((set, get) => ({
-      past: [],
-      future: [],
-
-      pushHistory: (page) =>
-        set((state) => {
-          state.past.push(page);
-          state.future = [];
-          // Keep only last 50 states
-          if (state.past.length > 50) {
-            state.past.shift();
-          }
-        }),
-
-      undo: () => {
-        const state = get();
-        if (state.past.length === 0) return null;
-
-        const previous = state.past[state.past.length - 1];
-        set((state) => {
-          state.past.pop();
-          const currentPage = useWebsiteStore.getState().pages.find(
-            (p) => p.id === useWebsiteStore.getState().currentPageId
-          );
-          if (currentPage) {
-            state.future.push(currentPage);
-          }
-        });
-        return previous;
-      },
-
-      redo: () => {
-        const state = get();
-        if (state.future.length === 0) return null;
-
-        const next = state.future[state.future.length - 1];
-        set((state) => {
-          state.future.pop();
-          const currentPage = useWebsiteStore.getState().pages.find(
-            (p) => p.id === useWebsiteStore.getState().currentPageId
-          );
-          if (currentPage) {
-            state.past.push(currentPage);
-          }
-        });
-        return next;
-      },
-
-      canUndo: () => get().past.length > 0,
-      canRedo: () => get().future.length > 0,
-
-      clearHistory: () =>
-        set((state) => {
-          state.past = [];
-          state.future = [];
-        }),
-    })),
-    { name: 'history-store' }
-  )
-);
-
 // AI Store
 export const useAIStore = create<AIStore>()(
   devtools(
@@ -594,23 +437,3 @@ export const useCurrentPage = () => {
   return currentPage;
 };
 
-// Combined selector for getting selected component
-export const useSelectedComponent = () => {
-  const selectedComponentId = useEditorStore((state) => state.selectedComponentId);
-  const currentPage = useCurrentPage();
-
-  if (!selectedComponentId || !currentPage) return null;
-
-  const findComponent = (components: WebsiteComponent[]): WebsiteComponent | null => {
-    for (const comp of components) {
-      if (comp.id === selectedComponentId) return comp;
-      if (comp.children) {
-        const found = findComponent(comp.children);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
-  return findComponent(currentPage.components);
-};

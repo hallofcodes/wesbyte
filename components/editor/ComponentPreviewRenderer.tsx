@@ -46,14 +46,19 @@ interface Props {
   onError?: (error: string | null) => void;
 }
 
+type Status = "loading" | "ready" | "error";
+
 export function ComponentPreviewRenderer({ filePath, onError }: Props) {
   const { files } = useProjectStore();
   const [Component, setComponent] = useState<React.ComponentType | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const compiledCacheRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     if (!filePath || !files[filePath]) {
       setComponent(null);
+      setStatus("loading");
       onError?.(null);
       return;
     }
@@ -64,27 +69,33 @@ export function ComponentPreviewRenderer({ filePath, onError }: Props) {
       const Comp = exports.default || exports;
       if (typeof Comp === "function") {
         setComponent(() => Comp);
+        setStatus("ready");
         onError?.(null);
       } else {
-        const errorMsg = `File does not export a component: ${filePath}`;
         setComponent(null);
-        onError?.(errorMsg);
+        setStatus("error");
+        setErrorMessage(`File does not export a component: ${filePath}`);
+        onError?.(`File does not export a component: ${filePath}`);
       }
     } catch (err: any) {
-      const errorMsg = err.message || "Failed to load component";
       setComponent(null);
-      onError?.(errorMsg);
+      setStatus("error");
+      setErrorMessage(err.message || "Failed to load component");
+      onError?.(err.message || "Failed to load component");
     }
   }, [filePath, files, onError]);
 
   if (!filePath) {
     return <div className="p-4 text-muted-foreground">Select a file to preview</div>;
   }
-  if (!Component) {
+  if (status === "loading") {
+    return <div className="p-4 text-muted-foreground">Loading preview...</div>;
+  }
+  if (status === "error" || !Component) {
     return (
       <div className="p-4 text-red-500">
         <p className="text-sm font-medium">Error previewing component</p>
-        <p className="text-xs mt-1">Check the file for syntax errors or missing exports.</p>
+        <p className="text-xs mt-1">{errorMessage || "Check the file for syntax errors or missing exports."}</p>
       </div>
     );
   }

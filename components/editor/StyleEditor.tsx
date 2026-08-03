@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { HexColorPicker } from "react-colorful";
-import { Slider } from "@/components/ui/slider"; // your Radix slider
+import { Slider } from "@/components/ui/slider";
 
 export interface StyleValues {
   color?: string;
@@ -33,126 +33,194 @@ export interface StyleValues {
   gap?: string;
 }
 
+type BoxPrefix = "margin" | "padding";
+type Side = "Top" | "Right" | "Bottom" | "Left";
+const SIDES: Side[] = ["Top", "Right", "Bottom", "Left"];
+
+interface BoxValues {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 const toNumber = (val: string | undefined) => {
   if (!val) return 0;
-  return parseInt(val.replace("px", ""), 10);
+  const n = parseInt(val.replace("px", ""), 10);
+  return Number.isNaN(n) ? 0 : n;
 };
 
 const toPx = (num: number) => `${num}px`;
 
-export function StyleEditor({ styles, onChange }: { styles: StyleValues; onChange: (newStyles: StyleValues) => void }) {
-  // Local state for all interactive controls
+function boxFromStyles(prefix: BoxPrefix, styles: StyleValues): BoxValues {
+  return {
+    top: toNumber(styles[`${prefix}Top`]),
+    right: toNumber(styles[`${prefix}Right`]),
+    bottom: toNumber(styles[`${prefix}Bottom`]),
+    left: toNumber(styles[`${prefix}Left`]),
+  };
+}
+
+function boxToStyleUpdates(prefix: BoxPrefix, box: BoxValues): Partial<StyleValues> {
+  return {
+    [`${prefix}Top`]: toPx(box.top),
+    [`${prefix}Right`]: toPx(box.right),
+    [`${prefix}Bottom`]: toPx(box.bottom),
+    [`${prefix}Left`]: toPx(box.left),
+  };
+}
+
+function SpacingRow({
+  label,
+  value,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs w-12">{label}</span>
+      <Slider
+        value={[value]}
+        min={0}
+        max={100}
+        step={1}
+        onValueChange={([v]) => onChange(v)}
+        onValueCommit={onCommit}
+        className="flex-1"
+      />
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
+        onBlur={onCommit}
+        className="w-12 p-1 border rounded text-xs text-center"
+      />
+      <span className="text-xs">px</span>
+    </div>
+  );
+}
+
+/** Shared control for margin and padding — same "uniform vs. per-side" UI, driven by a single BoxValues object instead of 4 useState fields each. */
+function BoxSpacingEditor({
+  label,
+  values,
+  uniform,
+  onUniformChange,
+  onCommit,
+}: {
+  label: string;
+  values: BoxValues;
+  uniform: boolean;
+  onUniformChange: (uniform: boolean) => void;
+  onCommit: (box: BoxValues) => void;
+}) {
+  const [local, setLocal] = useState(values);
+
+  useEffect(() => setLocal(values), [values]);
+
+  const setSide = (side: Side, val: number) => {
+    if (uniform) {
+      setLocal({ top: val, right: val, bottom: val, left: val });
+    } else {
+      setLocal((prev) => ({ ...prev, [side.toLowerCase()]: val }));
+    }
+  };
+
+  const commit = () => onCommit(local);
+
+  const handleUniformToggle = (checked: boolean) => {
+    if (checked) {
+      const avg = local.top || local.right || local.bottom || local.left || 0;
+      const uniformBox = { top: avg, right: avg, bottom: avg, left: avg };
+      setLocal(uniformBox);
+      onCommit(uniformBox);
+    }
+    onUniformChange(checked);
+  };
+
+  return (
+    <div className="border-t pt-3">
+      <div className="flex justify-between items-center mb-2">
+        <label className="text-xs font-medium">{label}</label>
+        <label className="flex items-center gap-1 text-xs">
+          <input
+            type="checkbox"
+            checked={uniform}
+            onChange={(e) => handleUniformToggle(e.target.checked)}
+          />{" "}
+          Uniform
+        </label>
+      </div>
+      {uniform ? (
+        <SpacingRow label="All" value={local.top} onChange={(v) => setSide("Top", v)} onCommit={commit} />
+      ) : (
+        <div className="space-y-2">
+          {SIDES.map((side) => (
+            <SpacingRow
+              key={side}
+              label={side}
+              value={local[side.toLowerCase() as keyof BoxValues]}
+              onChange={(v) => setSide(side, v)}
+              onCommit={commit}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function StyleEditor({
+  styles,
+  onChange,
+}: {
+  styles: StyleValues;
+  onChange: (newStyles: StyleValues) => void;
+}) {
   const [localColor, setLocalColor] = useState(styles.color || "#000000");
   const [localBgColor, setLocalBgColor] = useState(styles.backgroundColor || "#ffffff");
   const [marginUniform, setMarginUniform] = useState(true);
   const [paddingUniform, setPaddingUniform] = useState(true);
-  const [marginTop, setMarginTop] = useState(toNumber(styles.marginTop));
-  const [marginRight, setMarginRight] = useState(toNumber(styles.marginRight));
-  const [marginBottom, setMarginBottom] = useState(toNumber(styles.marginBottom));
-  const [marginLeft, setMarginLeft] = useState(toNumber(styles.marginLeft));
-  const [paddingTop, setPaddingTop] = useState(toNumber(styles.paddingTop));
-  const [paddingRight, setPaddingRight] = useState(toNumber(styles.paddingRight));
-  const [paddingBottom, setPaddingBottom] = useState(toNumber(styles.paddingBottom));
-  const [paddingLeft, setPaddingLeft] = useState(toNumber(styles.paddingLeft));
 
   // Sync when selected element changes
   useEffect(() => {
     setLocalColor(styles.color || "#000000");
     setLocalBgColor(styles.backgroundColor || "#ffffff");
-    setMarginTop(toNumber(styles.marginTop));
-    setMarginRight(toNumber(styles.marginRight));
-    setMarginBottom(toNumber(styles.marginBottom));
-    setMarginLeft(toNumber(styles.marginLeft));
-    setPaddingTop(toNumber(styles.paddingTop));
-    setPaddingRight(toNumber(styles.paddingRight));
-    setPaddingBottom(toNumber(styles.paddingBottom));
-    setPaddingLeft(toNumber(styles.paddingLeft));
   }, [styles]);
 
   const update = (key: keyof StyleValues, value: string) => {
     onChange({ ...styles, [key]: value });
   };
 
-  //Commit margin – batch all sides in one update
-const commitMargin = () => {
-  if (marginUniform) {
-    const px = toPx(marginTop);
-    onChange({
-      ...styles,
-      marginTop: px,
-      marginRight: px,
-      marginBottom: px,
-      marginLeft: px,
-    });
-  } else {
-    onChange({
-      ...styles,
-      marginTop: toPx(marginTop),
-      marginRight: toPx(marginRight),
-      marginBottom: toPx(marginBottom),
-      marginLeft: toPx(marginLeft),
-    });
-  }
-};
-
-// Commit padding – batch all sides in one update
-const commitPadding = () => {
-  if (paddingUniform) {
-    const px = toPx(paddingTop);
-    onChange({
-      ...styles,
-      paddingTop: px,
-      paddingRight: px,
-      paddingBottom: px,
-      paddingLeft: px,
-    });
-  } else {
-    onChange({
-      ...styles,
-      paddingTop: toPx(paddingTop),
-      paddingRight: toPx(paddingRight),
-      paddingBottom: toPx(paddingBottom),
-      paddingLeft: toPx(paddingLeft),
-    });
-  }
-};
-  
-  const handleMarginUniformToggle = (checked: boolean) => {
-    if (checked) {
-      const avg = marginTop || marginRight || marginBottom || marginLeft || 0;
-      setMarginTop(avg);
-      setMarginRight(avg);
-      setMarginBottom(avg);
-      setMarginLeft(avg);
-    }
-    setMarginUniform(checked);
+  const commitBox = (prefix: BoxPrefix, box: BoxValues) => {
+    onChange({ ...styles, ...boxToStyleUpdates(prefix, box) });
   };
-
-  const handlePaddingUniformToggle = (checked: boolean) => {
-    if (checked) {
-      const avg = paddingTop || paddingRight || paddingBottom || paddingLeft || 0;
-      setPaddingTop(avg);
-      setPaddingRight(avg);
-      setPaddingBottom(avg);
-      setPaddingLeft(avg);
-    }
-    setPaddingUniform(checked);
-  };
-  
-  const hqndleColor = () => {
-    alert(0)
-  }
 
   return (
     <div className="space-y-4">
       {/* Colors */}
       <div className="relative z-0">
         <label className="text-xs font-medium block mb-1">Text Color</label>
-        <HexColorPicker color={localColor} onChange={setLocalColor} onChangeEnd={(val) => update("color", val)} className="!w-full" />
+        <HexColorPicker
+          color={localColor}
+          onChange={setLocalColor}
+          onChangeEnd={(val) => update("color", val)}
+          className="!w-full"
+        />
       </div>
       <div className="relative z-0">
         <label className="text-xs font-medium block mb-1">Background Color</label>
-        <HexColorPicker color={localBgColor} onChange={setLocalBgColor} onChangeEnd={(val) => update("backgroundColor", val)} className="!w-full" />
+        <HexColorPicker
+          color={localBgColor}
+          onChange={setLocalBgColor}
+          onChangeEnd={(val) => update("backgroundColor", val)}
+          className="!w-full"
+        />
       </div>
 
       {/* Width / Height */}
@@ -165,149 +233,21 @@ const commitPadding = () => {
         <input type="text" value={styles.height || ""} onChange={(e) => update("height", e.target.value)} placeholder="auto" className="w-full p-1 border rounded" />
       </div>
 
-      {/* Margin */}
-      <div className="border-t pt-3">
-        <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-medium">Margin</label>
-          <label className="flex items-center gap-1 text-xs">
-            <input type="checkbox" checked={marginUniform} onChange={(e) => handleMarginUniformToggle(e.target.checked)} /> Uniform
-          </label>
-        </div>
-        {marginUniform ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs w-12">All</span>
-            <Slider
-              value={[marginTop]}
-              min={0}
-              max={100}
-              step={1}
-              onValueChange={([val]) => {
-                setMarginTop(val);
-                setMarginRight(val);
-                setMarginBottom(val);
-                setMarginLeft(val);
-              }}
-              onValueCommit={commitMargin}
-              className="flex-1"
-            />
-            <input
-              type="number"
-              value={marginTop}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                setMarginTop(v);
-                setMarginRight(v);
-                setMarginBottom(v);
-                setMarginLeft(v);
-              }}
-              onBlur={commitMargin}
-              className="w-12 p-1 border rounded text-xs text-center"
-            />
-            <span className="text-xs">px</span>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(["Top", "Right", "Bottom", "Left"] as const).map((side) => {
-              const value = side === "Top" ? marginTop : side === "Right" ? marginRight : side === "Bottom" ? marginBottom : marginLeft;
-              const setter = side === "Top" ? setMarginTop : side === "Right" ? setMarginRight : side === "Bottom" ? setMarginBottom : setMarginLeft;
-              return (
-                <div key={side} className="flex items-center gap-2">
-                  <span className="text-xs w-12">{side}</span>
-                  <Slider
-                    value={[value]}
-                    min={0}
-                    max={100}
-                    step={1}
-                    onValueChange={([val]) => setter(val)}
-                    onValueCommit={commitMargin}
-                    className="flex-1"
-                  />
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setter(parseInt(e.target.value, 10))}
-                    onBlur={commitMargin}
-                    className="w-12 p-1 border rounded text-xs text-center"
-                  />
-                  <span className="text-xs">px</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <BoxSpacingEditor
+        label="Margin"
+        values={boxFromStyles("margin", styles)}
+        uniform={marginUniform}
+        onUniformChange={setMarginUniform}
+        onCommit={(box) => commitBox("margin", box)}
+      />
 
-      {/* Padding (same pattern as margin) */}
-      <div className="border-t pt-3">
-        <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-medium">Padding</label>
-          <label className="flex items-center gap-1 text-xs">
-            <input type="checkbox" checked={paddingUniform} onChange={(e) => handlePaddingUniformToggle(e.target.checked)} /> Uniform
-          </label>
-        </div>
-        {paddingUniform ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs w-12">All</span>
-            <Slider
-              value={[paddingTop]}
-              min={0}
-              max={100}
-              step={1}
-              onValueChange={([val]) => {
-                setPaddingTop(val);
-                setPaddingRight(val);
-                setPaddingBottom(val);
-                setPaddingLeft(val);
-              }}
-              onValueCommit={commitPadding}
-              className="flex-1"
-            />
-            <input
-              type="number"
-              value={paddingTop}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                setPaddingTop(v);
-                setPaddingRight(v);
-                setPaddingBottom(v);
-                setPaddingLeft(v);
-              }}
-              onBlur={commitPadding}
-              className="w-12 p-1 border rounded text-xs text-center"
-            />
-            <span className="text-xs">px</span>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(["Top", "Right", "Bottom", "Left"] as const).map((side) => {
-              const value = side === "Top" ? paddingTop : side === "Right" ? paddingRight : side === "Bottom" ? paddingBottom : paddingLeft;
-              const setter = side === "Top" ? setPaddingTop : side === "Right" ? setPaddingRight : side === "Bottom" ? setPaddingBottom : setPaddingLeft;
-              return (
-                <div key={side} className="flex items-center gap-2">
-                  <span className="text-xs w-12">{side}</span>
-                  <Slider
-                    value={[value]}
-                    min={0}
-                    max={100}
-                    step={1}
-                    onValueChange={([val]) => setter(val)}
-                    onValueCommit={commitPadding}
-                    className="flex-1"
-                  />
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setter(parseInt(e.target.value, 10))}
-                    onBlur={commitPadding}
-                    className="w-12 p-1 border rounded text-xs text-center"
-                  />
-                  <span className="text-xs">px</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <BoxSpacingEditor
+        label="Padding"
+        values={boxFromStyles("padding", styles)}
+        uniform={paddingUniform}
+        onUniformChange={setPaddingUniform}
+        onCommit={(box) => commitBox("padding", box)}
+      />
 
       {/* Display */}
       <div>
@@ -338,13 +278,13 @@ const commitPadding = () => {
       {/* Position offsets */}
       {styles.position && styles.position !== "static" && (
         <div className="grid grid-cols-2 gap-2">
-          {["top", "right", "bottom", "left"].map((offset) => (
+          {(["top", "right", "bottom", "left"] as const).map((offset) => (
             <div key={offset}>
               <label className="text-xs capitalize">{offset}</label>
               <input
                 type="text"
-                value={(styles as any)[offset] || ""}
-                onChange={(e) => update(offset as keyof StyleValues, e.target.value)}
+                value={styles[offset] || ""}
+                onChange={(e) => update(offset, e.target.value)}
                 placeholder="auto"
                 className="w-full p-1 border rounded text-xs"
               />

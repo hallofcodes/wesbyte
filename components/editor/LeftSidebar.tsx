@@ -1,4 +1,3 @@
-"use client";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
@@ -59,7 +58,6 @@ export function LeftSidebar({
 
   const activeTab = tabs.find(t => t.id === activeTabId);
   const sidebarWidth = 304;
-  const backdropLeft = stripRect.left + sidebarWidth;
 
   return (
     <>
@@ -82,22 +80,9 @@ export function LeftSidebar({
         ))}
       </div>
 
-      {/* Backdrop - always rendered, transitions opacity */}
-      <div
-        className="fixed inset-0 z-40 transition-opacity duration-300"
-        style={{
-          left: `${backdropLeft}px`,
-          top: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.5)",
-          opacity: isOpen ? 1 : 0,
-          pointerEvents: isOpen ? "auto" : "none",
-        }}
-        onClick={onToggle}
-      />
-
-      {/* Expanded panel - always rendered, transitions transform and opacity */}
+      {/* Expanded panel - always rendered, transitions transform and opacity.
+          (No backdrop: a full-screen overlay here would sit on top of the canvas
+          and silently swallow every drag/drop event aimed at it.) */}
       <div
         ref={panelRef}
         className="fixed z-50 flex shadow-xl bg-background transition-all duration-300 ease-out"

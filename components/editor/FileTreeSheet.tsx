@@ -58,7 +58,7 @@ export function FileTreeSheet({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isCreatingFile, setIsCreatingFile] = useState(false);
   const [newFileName, setNewFileName] = useState("");
-  const toastTimeoutRef = useRef<NodeJSimeout | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fileTree, setFileTree] = useState<TreeNode | null>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 

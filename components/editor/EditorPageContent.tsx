@@ -10,12 +10,20 @@ import { PropertyPanel } from "./PropertyPanel";
 import { MobilePropertySheet } from "./MobilePropertySheet";
 import {
   parseJsxToTree,
-  getClassNameForTag,
-  getAttributeForTag,
   setAttributeForTag,
-  getTextForTag,
   setTextForTag,
+  insertElementNearTag,
+  moveElementNearTag,
+  WESBYTE_INSERT_MIME,
+  WESBYTE_MOVE_MIME,
 } from "./editor-helpers";
+import {
+  ATTR_JSX_NAME,
+  EMPTY_ATTRIBUTES,
+  isBooleanAttribute,
+  readAttributesForTag,
+  type ElementAttributes,
+} from "./attributeSchema";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-react";
 import NextLink from "next/link";
@@ -23,8 +31,11 @@ import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
 import { ElementsTab } from "./SidebarTabs/ElementsTab";
 import { LayerTreeTab } from "./SidebarTabs/LayerTreeTab";
 
+const MOBILE_BREAKPOINT_QUERY = "(max-width: 767px)";
+const APP_ENTRY_FILE = "src/App.jsx";
+
 const mockFiles = {
-  "src/App.jsx": `const Header = require('src/Header.jsx');
+  [APP_ENTRY_FILE]: `const Header = require('src/Header.jsx');
 function App() {
   return (
     <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
@@ -43,6 +54,27 @@ module.exports = App;`,
 module.exports = Header;`,
 };
 
+/** Tracks whether the viewport is currently at/below the mobile breakpoint, reactively (not just at mount). */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
+    const update = () => setIsMobile(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
+
+/** 0-indexed position of `el` among all elements sharing its tag within `container`, in document order — matches how the AST helpers in editor-helpers.ts count occurrences. */
+function computeOccurrenceIndex(container: HTMLElement, el: HTMLElement): number {
+  const sameTag = Array.from(container.querySelectorAll(el.tagName));
+  return sameTag.indexOf(el);
+}
+
 export default function EditorPageContent() {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
@@ -57,32 +89,18 @@ export default function EditorPageContent() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isCustomComponent, setIsCustomComponent] = useState(false);
   const [customComponentFilePath, setCustomComponentFilePath] = useState<string | null>(null);
+  const [isDragOverCanvas, setIsDragOverCanvas] = useState(false);
 
-  // Attribute state
-  const [selectedClassName, setSelectedClassName] = useState("");
-  const [selectedId, setSelectedId] = useState("");
-  const [selectedSrc, setSelectedSrc] = useState("");
-  const [selectedAlt, setSelectedAlt] = useState("");
-  const [selectedHref, setSelectedHref] = useState("");
-  const [selectedTarget, setSelectedTarget] = useState("");
-  const [selectedRel, setSelectedRel] = useState("");
-  const [selectedText, setSelectedText] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState("");
-  const [selectedWidth, setSelectedWidth] = useState("");
-  const [selectedHeight, setSelectedHeight] = useState("");
-  const [selectedPlaceholder, setSelectedPlaceholder] = useState("");
-  const [selectedDisabled, setSelectedDisabled] = useState(false);
-  const [selectedReadOnly, setSelectedReadOnly] = useState(false);
-  const [selectedAutoComplete, setSelectedAutoComplete] = useState("");
-  const [selectedTabIndex, setSelectedTabIndex] = useState("");
-  const [selectedAriaLabel, setSelectedAriaLabel] = useState("");
-  const [selectedAriaHidden, setSelectedAriaHidden] = useState(false);
-  const [selectedOnClick, setSelectedOnClick] = useState("");
+  // Every editable attribute of the selected element, as one object.
+  const [attributes, setAttributes] = useState<ElementAttributes>(EMPTY_ATTRIBUTES);
   const [customAttrKey, setCustomAttrKey] = useState("");
   const [customAttrValue, setCustomAttrValue] = useState("");
 
   const { files, setFiles, updateFileContent, selectedFilePath, setSelectedFilePath } = useProjectStore();
   const previewRef = useRef<HTMLDivElement>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ top: number; left: number; width: number } | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!files || Object.keys(files).length === 0) {
@@ -94,7 +112,7 @@ export default function EditorPageContent() {
   const customComponentNames = useMemo(() => {
     const names = new Set<string>();
     Object.keys(files).forEach((path) => {
-      if (path.startsWith('src/') && path.endsWith('.jsx')) {
+      if (path.startsWith("src/") && path.endsWith(".jsx")) {
         const componentName = path.slice(4, -4); // "src/Header.jsx" -> "Header"
         names.add(componentName);
       }
@@ -102,51 +120,62 @@ export default function EditorPageContent() {
     return names;
   }, [files]);
 
-  // On mobile, disable interactive mode so tapping always selects
+  // On mobile, default to non-interactive mode so tapping always selects an element.
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setInteractiveMode(false);
-    }
-  }, []);
+    if (isMobile) setInteractiveMode(false);
+  }, [isMobile]);
 
   // Force re-render of preview when files change
-  const filesKey = useMemo(() => Object.keys(files).sort().join(','), [files]);
+  const filesKey = useMemo(() => Object.keys(files).sort().join(","), [files]);
+
+  // Makes every rendered element in the canvas draggable, so existing elements can be
+  // dragged to a new position (not just new elements dropped in from the palette).
+  // Form controls are excluded so you can still click/type into them normally.
+  useEffect(() => {
+    const container = previewRef.current;
+    if (!container) return;
+
+    const NON_DRAGGABLE_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+    const attached: HTMLElement[] = [];
+
+    const handleDragStart = (e: DragEvent) => {
+      const el = e.currentTarget as HTMLElement;
+      e.stopPropagation();
+      const occurrence = computeOccurrenceIndex(container, el);
+      e.dataTransfer?.setData(WESBYTE_MOVE_MIME, JSON.stringify({ tag: el.tagName, occurrence }));
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    };
+
+    const walk = (node: Element) => {
+      Array.from(node.children).forEach((child) => {
+        const el = child as HTMLElement;
+        if (!NON_DRAGGABLE_TAGS.has(el.tagName)) {
+          el.draggable = true;
+          el.addEventListener("dragstart", handleDragStart);
+          attached.push(el);
+        }
+        walk(el);
+      });
+    };
+    walk(container);
+
+    return () => {
+      attached.forEach((el) => el.removeEventListener("dragstart", handleDragStart));
+    };
+  }, [filesKey]);
 
   // Dynamic layer tree (full app or selected file)
   const currentFileForLayerTree = useMemo(() => {
     if (previewMode === "file" && selectedFilePath && files[selectedFilePath]) {
       return selectedFilePath;
     }
-    return "src/App.jsx";
+    return APP_ENTRY_FILE;
   }, [previewMode, selectedFilePath, files]);
 
   const currentLayerTree = useMemo(() => {
     const code = files?.[currentFileForLayerTree] || "";
     return parseJsxToTree(code);
   }, [files, currentFileForLayerTree]);
-
-  // Refresh attributes for a standard element
-  const refreshAttributes = (tag: string, code: string) => {
-    setSelectedClassName(getClassNameForTag(code, tag));
-    setSelectedId(getAttributeForTag(code, tag, "id"));
-    setSelectedSrc(getAttributeForTag(code, tag, "src"));
-    setSelectedAlt(getAttributeForTag(code, tag, "alt"));
-    setSelectedHref(getAttributeForTag(code, tag, "href"));
-    setSelectedTarget(getAttributeForTag(code, tag, "target"));
-    setSelectedRel(getAttributeForTag(code, tag, "rel"));
-    setSelectedStyle(getAttributeForTag(code, tag, "style"));
-    setSelectedWidth(getAttributeForTag(code, tag, "width"));
-    setSelectedHeight(getAttributeForTag(code, tag, "height"));
-    setSelectedPlaceholder(getAttributeForTag(code, tag, "placeholder"));
-    setSelectedDisabled(getAttributeForTag(code, tag, "disabled") === "true");
-    setSelectedReadOnly(getAttributeForTag(code, tag, "readOnly") === "true");
-    setSelectedAutoComplete(getAttributeForTag(code, tag, "autoComplete"));
-    setSelectedTabIndex(getAttributeForTag(code, tag, "tabIndex"));
-    setSelectedAriaLabel(getAttributeForTag(code, tag, "aria-label"));
-    setSelectedAriaHidden(getAttributeForTag(code, tag, "aria-hidden") === "true");
-    setSelectedOnClick(getAttributeForTag(code, tag, "onClick"));
-    setSelectedText(getTextForTag(code, tag));
-  };
 
   // Core selection function
   const handleSelectElement = (rawTag: string) => {
@@ -160,33 +189,14 @@ export default function EditorPageContent() {
     if (isCustom) {
       const guessedPath = `src/${rawTag}.jsx`;
       setCustomComponentFilePath(files[guessedPath] ? guessedPath : null);
-      // Clear all attribute states
-      setSelectedClassName("");
-      setSelectedId("");
-      setSelectedSrc("");
-      setSelectedAlt("");
-      setSelectedHref("");
-      setSelectedTarget("");
-      setSelectedRel("");
-      setSelectedStyle("");
-      setSelectedWidth("");
-      setSelectedHeight("");
-      setSelectedPlaceholder("");
-      setSelectedDisabled(false);
-      setSelectedReadOnly(false);
-      setSelectedAutoComplete("");
-      setSelectedTabIndex("");
-      setSelectedAriaLabel("");
-      setSelectedAriaHidden(false);
-      setSelectedOnClick("");
-      setSelectedText("");
+      setAttributes(EMPTY_ATTRIBUTES);
     } else {
       setCustomComponentFilePath(null);
-      const appCode = files?.["src/App.jsx"] || "";
-      refreshAttributes(lowerTag, appCode);
+      const appCode = files?.[APP_ENTRY_FILE] || "";
+      setAttributes(readAttributesForTag(appCode, lowerTag));
     }
 
-    if (window.innerWidth < 768) setIsMobileSheetOpen(true);
+    if (isMobile) setIsMobileSheetOpen(true);
   };
 
   // Native click listener on the preview container (reliable on mobile)
@@ -196,7 +206,7 @@ export default function EditorPageContent() {
 
     const handleClick = (e: MouseEvent) => {
       // On desktop with interactiveMode on, require Shift key
-      if (window.innerWidth >= 768 && interactiveMode && !e.shiftKey) return;
+      if (!isMobile && interactiveMode && !e.shiftKey) return;
 
       let target = e.target as HTMLElement;
       // Find the deepest element that has a tag name matching a custom component
@@ -215,9 +225,9 @@ export default function EditorPageContent() {
       }
     };
 
-    container.addEventListener('click', handleClick);
-    return () => container.removeEventListener('click', handleClick);
-  }, [interactiveMode, customComponentNames, files]);
+    container.addEventListener("click", handleClick);
+    return () => container.removeEventListener("click", handleClick);
+  }, [interactiveMode, customComponentNames, files, isMobile]);
 
   // Interactive mode capture for buttons, links, etc. (only when interactiveMode is false)
   useEffect(() => {
@@ -236,67 +246,119 @@ export default function EditorPageContent() {
     return () => document.removeEventListener("click", handleCapture, true);
   }, [interactiveMode]);
 
-  // Attribute update helpers (unchanged)
-  const updateAttribute = (attr: string, value: string, setter: (v: string) => void) => {
+  // Single handler for every attribute edit, replacing 19 near-identical handlers.
+  const handleAttributeChange = (key: keyof ElementAttributes, value: string | boolean) => {
     if (!selectedElement) return;
-    const appCode = files?.["src/App.jsx"];
+    const appCode = files?.[APP_ENTRY_FILE];
     if (!appCode) return;
-    const newCode = setAttributeForTag(appCode, selectedElement, attr, value);
-    updateFileContent("src/App.jsx", newCode);
-    setter(value);
+
+    let newCode: string;
+    if (key === "text") {
+      newCode = setTextForTag(appCode, selectedElement, String(value));
+    } else {
+      const jsxName = ATTR_JSX_NAME[key] ?? key;
+      const jsxValue = isBooleanAttribute(key) ? (value ? "true" : "") : String(value);
+      newCode = setAttributeForTag(appCode, selectedElement, jsxName, jsxValue);
+    }
+
+    updateFileContent(APP_ENTRY_FILE, newCode);
+    setAttributes((prev) => ({ ...prev, [key]: value }));
   };
 
-  const updateBooleanAttribute = (attr: string, checked: boolean, setter: (v: boolean) => void) => {
-    if (!selectedElement) return;
-    const appCode = files?.["src/App.jsx"];
-    if (!appCode) return;
-    const value = checked ? "true" : "";
-    const newCode = setAttributeForTag(appCode, selectedElement, attr, value);
-    updateFileContent("src/App.jsx", newCode);
-    setter(checked);
+  // Real drag-and-drop: works for both (a) new elements dragged in from the palette, and
+  // (b) existing canvas elements being repositioned. A thin insertion-line indicator shows
+  // exactly where the drop will land, based on whether the cursor is over the top or
+  // bottom half of the hovered element.
+  const computeIndicatorForTarget = (targetEl: HTMLElement, clientY: number) => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return null;
+    const rect = targetEl.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    return {
+      placement: (before ? "before" : "after") as "before" | "after",
+      indicator: {
+        top: (before ? rect.top : rect.bottom) - wrapperRect.top + wrapper.scrollTop,
+        left: rect.left - wrapperRect.left,
+        width: rect.width,
+      },
+    };
   };
 
-  const handleClassNameChange = (v: string) => updateAttribute("className", v, setSelectedClassName);
-  const handleIdChange = (v: string) => updateAttribute("id", v, setSelectedId);
-  const handleSrcChange = (v: string) => updateAttribute("src", v, setSelectedSrc);
-  const handleAltChange = (v: string) => updateAttribute("alt", v, setSelectedAlt);
-  const handleHrefChange = (v: string) => updateAttribute("href", v, setSelectedHref);
-  const handleTargetChange = (v: string) => updateAttribute("target", v, setSelectedTarget);
-  const handleRelChange = (v: string) => updateAttribute("rel", v, setSelectedRel);
-  const handleTextChange = (v: string) => {
-    if (!selectedElement) return;
-    const appCode = files?.["src/App.jsx"];
-    if (!appCode) return;
-    const newCode = setTextForTag(appCode, selectedElement, v);
-    updateFileContent("src/App.jsx", newCode);
-    setSelectedText(v);
+  const handleCanvasDragOver = (e: React.DragEvent) => {
+    const isInsert = e.dataTransfer.types.includes(WESBYTE_INSERT_MIME);
+    const isMove = e.dataTransfer.types.includes(WESBYTE_MOVE_MIME);
+    if (!isInsert && !isMove) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = isMove ? "move" : "copy";
+    setIsDragOverCanvas(true);
+
+    const targetEl = e.target as HTMLElement;
+    const container = previewRef.current;
+    if (!container || !targetEl || targetEl === container) {
+      setDropIndicator(null);
+      return;
+    }
+    const result = computeIndicatorForTarget(targetEl, e.clientY);
+    setDropIndicator(result?.indicator ?? null);
   };
-  const handleStyleChange = (v: string) => updateAttribute("style", v, setSelectedStyle);
-  const handleWidthChange = (v: string) => updateAttribute("width", v, setSelectedWidth);
-  const handleHeightChange = (v: string) => updateAttribute("height", v, setSelectedHeight);
-  const handlePlaceholderChange = (v: string) => updateAttribute("placeholder", v, setSelectedPlaceholder);
-  const handleDisabledChange = (v: boolean) => updateBooleanAttribute("disabled", v, setSelectedDisabled);
-  const handleReadOnlyChange = (v: boolean) => updateBooleanAttribute("readOnly", v, setSelectedReadOnly);
-  const handleAutoCompleteChange = (v: string) => updateAttribute("autoComplete", v, setSelectedAutoComplete);
-  const handleTabIndexChange = (v: string) => updateAttribute("tabIndex", v, setSelectedTabIndex);
-  const handleAriaLabelChange = (v: string) => updateAttribute("aria-label", v, setSelectedAriaLabel);
-  const handleAriaHiddenChange = (v: boolean) => updateBooleanAttribute("aria-hidden", v, setSelectedAriaHidden);
-  const handleOnClickChange = (v: string) => updateAttribute("onClick", v, setSelectedOnClick);
+
+  const handleCanvasDragLeave = (e: React.DragEvent) => {
+    const wrapper = canvasWrapperRef.current;
+    const related = e.relatedTarget as Node | null;
+    if (wrapper && related && wrapper.contains(related)) return; // still inside, just moved between children
+    setIsDragOverCanvas(false);
+    setDropIndicator(null);
+  };
+
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    setIsDragOverCanvas(false);
+    setDropIndicator(null);
+
+    const container = previewRef.current;
+    const targetEl = e.target as HTMLElement;
+    if (!container || !targetEl || targetEl === container) return;
+
+    const insertSnippet = e.dataTransfer.getData(WESBYTE_INSERT_MIME);
+    const movePayloadRaw = e.dataTransfer.getData(WESBYTE_MOVE_MIME);
+    if (!insertSnippet && !movePayloadRaw) return;
+    e.preventDefault();
+
+    const appCode = files?.[APP_ENTRY_FILE];
+    if (!appCode) return;
+
+    const { placement } = computeIndicatorForTarget(targetEl, e.clientY) ?? { placement: "after" as const };
+    const targetOccurrence = computeOccurrenceIndex(container, targetEl);
+
+    let newCode: string | null = null;
+    if (insertSnippet) {
+      newCode = insertElementNearTag(appCode, targetEl.tagName, insertSnippet, targetOccurrence, placement);
+    } else if (movePayloadRaw) {
+      try {
+        const source = JSON.parse(movePayloadRaw) as { tag: string; occurrence: number };
+        if (source.tag === targetEl.tagName && source.occurrence === targetOccurrence) return; // dropped on itself
+        newCode = moveElementNearTag(appCode, source, { tag: targetEl.tagName, occurrence: targetOccurrence }, placement);
+      } catch {
+        return;
+      }
+    }
+    if (newCode) updateFileContent(APP_ENTRY_FILE, newCode);
+  };
 
   const handleAddCustomAttr = () => {
     if (!selectedElement || !customAttrKey) return;
-    const appCode = files?.["src/App.jsx"];
+    const appCode = files?.[APP_ENTRY_FILE];
     if (!appCode) return;
     const newCode = setAttributeForTag(appCode, selectedElement, customAttrKey, customAttrValue);
-    updateFileContent("src/App.jsx", newCode);
-    refreshAttributes(selectedElement, newCode);
+    updateFileContent(APP_ENTRY_FILE, newCode);
+    setAttributes(readAttributesForTag(newCode, selectedElement));
     setCustomAttrKey("");
     setCustomAttrValue("");
   };
 
   const handleFileTreeClick = () => {
     setIsFileTreeOpen(true);
-    if (window.innerWidth < 768) setIsMobileSheetOpen(false);
+    if (isMobile) setIsMobileSheetOpen(false);
   };
 
   const handleCloseFileTree = () => {
@@ -307,7 +369,7 @@ export default function EditorPageContent() {
   const handleOpenFileInTree = (filePath: string) => {
     setFileTreeInitialFile(filePath);
     setIsFileTreeOpen(true);
-    if (window.innerWidth < 768) setIsMobileSheetOpen(false);
+    if (isMobile) setIsMobileSheetOpen(false);
   };
 
   const sidebarTabs: SidebarTab[] = [
@@ -315,7 +377,7 @@ export default function EditorPageContent() {
       id: "elements",
       icon: Box,
       label: "Elements",
-      content: <ElementsTab onSelectElement={handleSelectElement} />,
+      content: <ElementsTab onSelectElement={handleSelectElement} onDragStart={() => setIsLeftOpen(false)} />,
     },
     {
       id: "layerTree",
@@ -382,12 +444,18 @@ export default function EditorPageContent() {
           />
           <div className="flex-1 bg-muted/30 overflow-auto flex items-start justify-center p-4">
             <div
-              className="shadow-2xl bg-background rounded-lg overflow-auto transition-all duration-200"
+              ref={canvasWrapperRef}
+              className={`relative shadow-2xl bg-background rounded-lg overflow-auto transition-all duration-200 ${
+                isDragOverCanvas ? "ring-2 ring-primary ring-offset-2" : ""
+              }`}
               style={{
                 width: devicePreview === "desktop" ? "100%" : devicePreview === "tablet" ? "768px" : "375px",
                 maxWidth: "100%",
                 minHeight: "400px",
               }}
+              onDragOver={handleCanvasDragOver}
+              onDragLeave={handleCanvasDragLeave}
+              onDrop={handleCanvasDrop}
             >
               <div ref={previewRef} className="preview">
                 {previewMode === "full" ? (
@@ -400,6 +468,12 @@ export default function EditorPageContent() {
                   />
                 )}
               </div>
+              {dropIndicator && (
+                <div
+                  className="absolute h-0.5 bg-primary pointer-events-none z-10"
+                  style={{ top: dropIndicator.top, left: dropIndicator.left, width: dropIndicator.width }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -409,44 +483,8 @@ export default function EditorPageContent() {
           <PropertyPanel
             selectedElement={selectedElement}
             selectedElementRaw={selectedElementRaw}
-            classNameValue={selectedClassName}
-            onClassNameChange={handleClassNameChange}
-            idValue={selectedId}
-            onIdChange={handleIdChange}
-            textValue={selectedText}
-            onTextChange={handleTextChange}
-            srcValue={selectedSrc}
-            onSrcChange={handleSrcChange}
-            altValue={selectedAlt}
-            onAltChange={handleAltChange}
-            hrefValue={selectedHref}
-            onHrefChange={handleHrefChange}
-            targetValue={selectedTarget}
-            onTargetChange={handleTargetChange}
-            relValue={selectedRel}
-            onRelChange={handleRelChange}
-            styleValue={selectedStyle}
-            onStyleChange={handleStyleChange}
-            widthValue={selectedWidth}
-            onWidthChange={handleWidthChange}
-            heightValue={selectedHeight}
-            onHeightChange={handleHeightChange}
-            placeholderValue={selectedPlaceholder}
-            onPlaceholderChange={handlePlaceholderChange}
-            disabledChecked={selectedDisabled}
-            onDisabledChange={handleDisabledChange}
-            readOnlyChecked={selectedReadOnly}
-            onReadOnlyChange={handleReadOnlyChange}
-            autoCompleteValue={selectedAutoComplete}
-            onAutoCompleteChange={handleAutoCompleteChange}
-            tabIndexValue={selectedTabIndex}
-            onTabIndexChange={handleTabIndexChange}
-            ariaLabelValue={selectedAriaLabel}
-            onAriaLabelChange={handleAriaLabelChange}
-            ariaHiddenChecked={selectedAriaHidden}
-            onAriaHiddenChange={handleAriaHiddenChange}
-            onClickValue={selectedOnClick}
-            onOnClickChange={handleOnClickChange}
+            attributes={attributes}
+            onAttributeChange={handleAttributeChange}
             customAttrKey={customAttrKey}
             customAttrValue={customAttrValue}
             onCustomAttrKeyChange={setCustomAttrKey}
@@ -465,45 +503,14 @@ export default function EditorPageContent() {
         onClose={() => setIsMobileSheetOpen(false)}
         selectedElement={selectedElement}
         selectedElementRaw={selectedElementRaw}
-        classNameValue={selectedClassName}
-        onClassNameChange={handleClassNameChange}
-        idValue={selectedId}
-        onIdChange={handleIdChange}
-        textValue={selectedText}
-        onTextChange={handleTextChange}
-        srcValue={selectedSrc}
-        onSrcChange={handleSrcChange}
-        altValue={selectedAlt}
-        onAltChange={handleAltChange}
-        hrefValue={selectedHref}
-        onHrefChange={handleHrefChange}
-        targetValue={selectedTarget}
-        onTargetChange={handleTargetChange}
-        relValue={selectedRel}
-        onRelChange={handleRelChange}
-        styleValue={selectedStyle}
-        onStyleChange={handleStyleChange}
-        widthValue={selectedWidth}
-        onWidthChange={handleWidthChange}
-        heightValue={selectedHeight}
-        onHeightChange={handleHeightChange}
-        placeholderValue={selectedPlaceholder}
-        onPlaceholderChange={handlePlaceholderChange}
-        disabledChecked={selectedDisabled}
-        onDisabledChange={handleDisabledChange}
-        readOnlyChecked={selectedReadOnly}
-        onReadOnlyChange={handleReadOnlyChange}
-        autoCompleteValue={selectedAutoComplete}
-        onAutoCompleteChange={handleAutoCompleteChange}
-        tabIndexValue={selectedTabIndex}
-        onTabIndexChange={handleTabIndexChange}
-        ariaLabelValue={selectedAriaLabel}
-        onAriaLabelChange={handleAriaLabelChange}
-        ariaHiddenChecked={selectedAriaHidden}
-        onAriaHiddenChange={handleAriaHiddenChange}
-        onClickValue={selectedOnClick}
-        onOnClickChange={handleOnClickChange}
+        attributes={attributes}
+        onAttributeChange={handleAttributeChange}
         interactiveMode={interactiveMode}
+        customAttrKey={customAttrKey}
+        customAttrValue={customAttrValue}
+        onCustomAttrKeyChange={setCustomAttrKey}
+        onCustomAttrValueChange={setCustomAttrValue}
+        onAddCustomAttr={handleAddCustomAttr}
         isCustomComponent={isCustomComponent}
         customComponentFilePath={customComponentFilePath}
         onOpenFile={handleOpenFileInTree}
