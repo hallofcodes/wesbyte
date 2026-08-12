@@ -63,9 +63,11 @@ function parseJSXToAST(jsxCode: string) {
 
 function findFirstElementByTag(ast: any, tagName: string) {
   let foundNode: any = null;
+  const target = tagName.toLowerCase();
   traverse(ast, {
     JSXElement(path) {
-      if (!foundNode && path.node.openingElement.name.name === tagName) {
+      const name = path.node.openingElement.name.name;
+      if (!foundNode && typeof name === "string" && name.toLowerCase() === target) {
         foundNode = path.node;
         path.stop();
       }
@@ -195,17 +197,15 @@ export function setTextForTag(jsxCode: string, tag: string, text: string): strin
   return output.code;
 }
 
-/** Drag payload MIME types, shared between the palette (insert) and canvas (move). */
-export const WESBYTE_INSERT_MIME = "application/x-wesbyte-insert";
-export const WESBYTE_MOVE_MIME = "application/x-wesbyte-move";
-
 function findNthElementPathByTag(ast: any, tagName: string, occurrence: number) {
   let count = -1;
   let foundPath: any = null;
+  const target = tagName.toLowerCase();
   traverse(ast, {
     JSXElement(path) {
       if (foundPath) return;
-      if (path.node.openingElement.name.name === tagName) {
+      const name = path.node.openingElement.name.name;
+      if (typeof name === "string" && name.toLowerCase() === target) {
         count++;
         if (count === occurrence) foundPath = path;
       }
@@ -293,4 +293,264 @@ export function moveElementNearTag(
 
   const output = generate(ast, { retainLines: false, compact: false });
   return output.code;
+}
+
+/**
+ * Finds the outermost JSXElement in the file — the root node returned by the component
+ * (e.g. the top-level <div> in `return (<div>...</div>)`). Used as a fallback insertion
+ * point when a drop lands on empty canvas space rather than directly over a rendered
+ * element, since in that case there's no target tag/occurrence to anchor to.
+ */
+function findRootJSXElementPath(ast: any) {
+  let rootPath: any = null;
+  traverse(ast, {
+    JSXElement(path) {
+      if (rootPath) return;
+      let ancestor = path.parentPath;
+      let hasJsxAncestor = false;
+      while (ancestor) {
+        if (ancestor.isJSXElement() || ancestor.isJSXFragment()) {
+          hasJsxAncestor = true;
+          break;
+        }
+        ancestor = ancestor.parentPath;
+      }
+      if (!hasJsxAncestor) rootPath = path;
+    },
+  });
+  return rootPath;
+}
+
+/** Appends a new JSX snippet as the last child of the component's root element. */
+export function appendElementToRoot(jsxCode: string, newElementJsx: string): string {
+  const ast = parseJSXToAST(jsxCode);
+  const rootPath = findRootJSXElementPath(ast);
+  if (!rootPath) return jsxCode;
+
+  let newNode: t.Node;
+  try {
+    newNode = parser.parseExpression(newElementJsx, { plugins: ["jsx"] } as any);
+  } catch {
+    return jsxCode;
+  }
+  if (!t.isJSXElement(newNode) && !t.isJSXFragment(newNode)) return jsxCode;
+
+  rootPath.node.children.push(t.jsxText("\n  "), newNode);
+
+  const output = generate(ast, { retainLines: false, compact: false });
+  return output.code;
+}
+
+/** Moves an existing element (by tag + nth-occurrence) to become the last child of the root element. */
+export function moveElementToRootEnd(
+  jsxCode: string,
+  source: { tag: string; occurrence: number }
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const sourcePath = findNthElementPathByTag(ast, source.tag, source.occurrence);
+  const rootPath = findRootJSXElementPath(ast);
+  if (!sourcePath || !rootPath || sourcePath.node === rootPath.node) return jsxCode;
+
+  const movedNode = t.cloneNode(sourcePath.node, true);
+  sourcePath.remove();
+  rootPath.node.children.push(t.jsxText("\n  "), movedNode);
+
+  const output = generate(ast, { retainLines: false, compact: false });
+  return output.code;
+}
+// ---------------------------------------------------------------------------
+// Stable element identity (data-wb-id)
+// ---------------------------------------------------------------------------
+
+/**
+ * Attribute injected into the *preview* build of App.jsx so every element rendered in the
+ * canvas can be traced back to an exact node in the source AST. Targeting by tag name plus
+ * "nth occurrence in the DOM" is unreliable, because custom components (e.g. `<Hero />`)
+ * expand into many DOM nodes that don't exist in App.jsx — so DOM and AST indices drift
+ * apart and edits land in the wrong place or silently no-op. An id is simply the node's
+ * traversal index, which is deterministic for a given source, so the same index resolves
+ * to the same node in both the annotate pass and the edit pass.
+ */
+export const WB_ID_ATTR = "data-wb-id";
+
+/** Returns a copy of `jsxCode` with a `data-wb-id` on every element. Used only to render the editor preview — never persisted to the user's files. */
+export function annotateJsxWithIds(jsxCode: string): string {
+  let ast;
+  try {
+    ast = parseJSXToAST(jsxCode);
+  } catch {
+    return jsxCode; // invalid/mid-edit code: render as-is rather than throwing
+  }
+  let index = 0;
+  traverse(ast, {
+    JSXElement(path) {
+      const id = String(index++);
+      path.node.openingElement.attributes.push(
+        t.jsxAttribute(t.jsxIdentifier(WB_ID_ATTR), t.stringLiteral(id))
+      );
+    },
+  });
+  return generate(ast, { retainLines: false, compact: false }).code;
+}
+
+/** Finds the JSXElement at a given traversal index — the counterpart to annotateJsxWithIds. */
+function findPathByIndex(ast: any, targetIndex: number) {
+  let index = 0;
+  let foundPath: any = null;
+  traverse(ast, {
+    JSXElement(path) {
+      if (foundPath) return;
+      if (index === targetIndex) foundPath = path;
+      index++;
+    },
+  });
+  return foundPath;
+}
+
+/** Reads the text content of the element at a given wb-id index. */
+export function getTextForIndex(jsxCode: string, targetIndex: number): string {
+  let ast;
+  try {
+    ast = parseJSXToAST(jsxCode);
+  } catch {
+    return "";
+  }
+  const path = findPathByIndex(ast, targetIndex);
+  if (!path) return "";
+  return path.node.children
+    .filter((c: any) => t.isJSXText(c))
+    .map((c: any) => c.value)
+    .join("")
+    .trim();
+}
+
+/** Replaces the text content of the element at a given wb-id index. */
+export function setTextForIndex(jsxCode: string, targetIndex: number, text: string): string {
+  const ast = parseJSXToAST(jsxCode);
+  const path = findPathByIndex(ast, targetIndex);
+  if (!path) return jsxCode;
+  path.node.children = [t.jsxText(text)];
+  return generate(ast, { retainLines: false, compact: false }).code;
+}
+
+/** Reads a single attribute off the element at a given wb-id index. */
+export function getAttributeForIndex(jsxCode: string, targetIndex: number, attr: string): string {
+  let ast;
+  try {
+    ast = parseJSXToAST(jsxCode);
+  } catch {
+    return "";
+  }
+  const path = findPathByIndex(ast, targetIndex);
+  if (!path) return "";
+  const attrNode = path.node.openingElement.attributes.find(
+    (a: any) => t.isJSXAttribute(a) && a.name.name === attr
+  );
+  if (!attrNode) return "";
+  if (attrNode.value === null) return "true";
+  if (t.isStringLiteral(attrNode.value)) return attrNode.value.value;
+  if (t.isJSXExpressionContainer(attrNode.value)) return generate(attrNode.value.expression).code;
+  return "";
+}
+
+/** Sets (or removes, when value resolves to `false`) an attribute on the element at a given wb-id index. */
+export function setAttributeForIndex(
+  jsxCode: string,
+  targetIndex: number,
+  attr: string,
+  value: string
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const path = findPathByIndex(ast, targetIndex);
+  if (!path) return jsxCode;
+
+  const attrs = path.node.openingElement.attributes;
+  const existingIndex = attrs.findIndex((a: any) => t.isJSXAttribute(a) && a.name.name === attr);
+  const valueNode = createJSXAttributeValue(value);
+
+  if (valueNode === undefined) {
+    if (existingIndex !== -1) attrs.splice(existingIndex, 1);
+  } else {
+    const newAttr = t.jsxAttribute(t.jsxIdentifier(attr), valueNode);
+    if (existingIndex !== -1) attrs[existingIndex] = newAttr;
+    else attrs.push(newAttr);
+  }
+  return generate(ast, { retainLines: false, compact: false }).code;
+}
+
+/** Inserts a new snippet before/after the element identified by its stable wb-id index. */
+export function insertElementAtIndex(
+  jsxCode: string,
+  targetIndex: number,
+  newElementJsx: string,
+  placement: "before" | "after"
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const targetPath = findPathByIndex(ast, targetIndex);
+  if (!targetPath) return jsxCode;
+
+  let newNode: t.Node;
+  try {
+    newNode = parser.parseExpression(newElementJsx, { plugins: ["jsx"] } as any);
+  } catch {
+    return jsxCode;
+  }
+  if (!t.isJSXElement(newNode) && !t.isJSXFragment(newNode)) return jsxCode;
+
+  const parent = targetPath.parent;
+  if (t.isJSXElement(parent) || t.isJSXFragment(parent)) {
+    if (placement === "before") targetPath.insertBefore(newNode);
+    else targetPath.insertAfter(newNode);
+  } else {
+    // Target is the root returned element — no sibling list, so nest inside it instead.
+    if (placement === "before") targetPath.node.children.unshift(t.jsxText("\n  "), newNode as t.JSXElement);
+    else targetPath.node.children.push(t.jsxText("\n  "), newNode as t.JSXElement);
+  }
+  return generate(ast, { retainLines: false, compact: false }).code;
+}
+
+/** Moves the element at `sourceIndex` to sit before/after the element at `targetIndex`. */
+export function moveElementToIndex(
+  jsxCode: string,
+  sourceIndex: number,
+  targetIndex: number,
+  placement: "before" | "after"
+): string {
+  const ast = parseJSXToAST(jsxCode);
+  const sourcePath = findPathByIndex(ast, sourceIndex);
+  const targetPath = findPathByIndex(ast, targetIndex);
+  if (!sourcePath || !targetPath || sourcePath.node === targetPath.node) return jsxCode;
+
+  // Refuse to move a node into its own subtree, which would detach the tree.
+  let ancestor = targetPath.parentPath;
+  while (ancestor) {
+    if (ancestor.node === sourcePath.node) return jsxCode;
+    ancestor = ancestor.parentPath;
+  }
+
+  const movedNode = t.cloneNode(sourcePath.node, true);
+  sourcePath.remove();
+
+  const targetParent = targetPath.parent;
+  if (t.isJSXElement(targetParent) || t.isJSXFragment(targetParent)) {
+    if (placement === "before") targetPath.insertBefore(movedNode);
+    else targetPath.insertAfter(movedNode);
+  } else {
+    if (placement === "before") targetPath.node.children.unshift(t.jsxText("\n  "), movedNode);
+    else targetPath.node.children.push(t.jsxText("\n  "), movedNode);
+  }
+  return generate(ast, { retainLines: false, compact: false }).code;
+}
+
+/** Moves the element at `sourceIndex` to become the last child of the root element. */
+export function moveElementIndexToRootEnd(jsxCode: string, sourceIndex: number): string {
+  const ast = parseJSXToAST(jsxCode);
+  const sourcePath = findPathByIndex(ast, sourceIndex);
+  const rootPath = findRootJSXElementPath(ast);
+  if (!sourcePath || !rootPath || sourcePath.node === rootPath.node) return jsxCode;
+
+  const movedNode = t.cloneNode(sourcePath.node, true);
+  sourcePath.remove();
+  rootPath.node.children.push(t.jsxText("\n  "), movedNode);
+  return generate(ast, { retainLines: false, compact: false }).code;
 }

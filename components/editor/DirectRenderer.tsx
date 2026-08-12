@@ -2,8 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { compileJSX } from '@/lib/compileJSX';
+import { annotateJsxWithIds } from './editor-helpers';
 
-export function DirectRenderer() {
+interface DirectRendererProps {
+  /**
+   * When true, App.jsx is annotated with `data-wb-id` attributes before compiling so the
+   * editor can map each rendered DOM node back to an exact source AST node. The annotation
+   * affects only what's rendered here — the user's stored files are never modified.
+   */
+  annotateForEditor?: boolean;
+}
+
+export function DirectRenderer({ annotateForEditor = false }: DirectRendererProps) {
   const { files, compiledFiles, setCompiledFile } = useProjectStore();
   const [Component, setComponent] = useState<React.ComponentType | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -12,13 +22,15 @@ export function DirectRenderer() {
     if (!files || Object.keys(files).length === 0) return;
     for (const [path, code] of Object.entries(files)) {
       try {
-        const compiled = compileJSX(code);
+        const source =
+          annotateForEditor && path === 'src/App.jsx' ? annotateJsxWithIds(code) : code;
+        const compiled = compileJSX(source);
         setCompiledFile(path, compiled);
       } catch (err: any) {
         setError(`Compile error in ${path}: ${err.message}`);
       }
     }
-  }, [files, setCompiledFile]);
+  }, [files, setCompiledFile, annotateForEditor]);
 
   useEffect(() => {
     const appCode = compiledFiles['src/App.jsx'];

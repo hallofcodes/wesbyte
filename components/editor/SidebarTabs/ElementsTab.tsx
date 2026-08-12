@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Heading2,
   Pilcrow,
@@ -8,7 +10,7 @@ import {
   Link2,
   type LucideIcon,
 } from "lucide-react";
-import { WESBYTE_INSERT_MIME } from "../editor-helpers";
+import { useDraggable } from "@dnd-kit/core";
 
 export interface PaletteElement {
   tag: string;
@@ -53,27 +55,51 @@ interface ElementsTabProps {
   onDragStart?: () => void;
 }
 
+/** Palette drag payload shape, read on the receiving end via `event.active.data.current`. */
+export interface PaletteDragData {
+  source: "palette";
+  jsx: string;
+}
+
+function PaletteItem({
+  el,
+  onSelectElement,
+  onDragStart,
+}: {
+  el: PaletteElement;
+  onSelectElement: (tag: string) => void;
+  onDragStart?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `palette-${el.tag}`,
+    data: { source: "palette", jsx: el.jsx } satisfies PaletteDragData,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onPointerDown={() => onDragStart?.()}
+      className={`flex items-center gap-2 p-2 border rounded-md cursor-grab active:cursor-grabbing hover:bg-muted transition-colors touch-none select-none ${
+        isDragging ? "opacity-40" : ""
+      }`}
+      onClick={() => onSelectElement(el.tag)}
+    >
+      <el.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+      <span className="text-xs">{el.label}</span>
+    </div>
+  );
+}
+
 export function ElementsTab({ onSelectElement, onDragStart }: ElementsTabProps) {
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground px-1 pb-1">
-        Drag onto the canvas to add, or click to jump to an existing one.
+        Drag onto the canvas to add, or tap to jump to an existing one.
       </p>
       {PALETTE_ELEMENTS.map((el) => (
-        <div
-          key={el.tag}
-          className="flex items-center gap-2 p-2 border rounded-md cursor-grab active:cursor-grabbing hover:bg-muted transition-colors"
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.setData(WESBYTE_INSERT_MIME, el.jsx);
-            e.dataTransfer.effectAllowed = "copy";
-            onDragStart?.();
-          }}
-          onClick={() => onSelectElement(el.tag)}
-        >
-          <el.icon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-xs">{el.label}</span>
-        </div>
+        <PaletteItem key={el.tag} el={el} onSelectElement={onSelectElement} onDragStart={onDragStart} />
       ))}
     </div>
   );

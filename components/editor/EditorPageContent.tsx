@@ -1,38 +1,66 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { DndContext, useSensor, useSensors, MouseSensor, TouchSensor, type DragStartEvent, type DragMoveEvent, type DragEndEvent } from "@dnd-kit/core";
 import { useProjectStore } from "@/store/projectStore";
 import { DirectRenderer } from "@/components/editor/DirectRenderer";
 import { ComponentPreviewRenderer } from "@/components/editor/ComponentPreviewRenderer";
 import { LeftSidebar, SidebarTab } from "./LeftSidebar";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { DeviceFrame } from "./DeviceFrame";
 import { PropertyPanel } from "./PropertyPanel";
 import { MobilePropertySheet } from "./MobilePropertySheet";
 import {
   parseJsxToTree,
   setAttributeForTag,
   setTextForTag,
-  insertElementNearTag,
-  moveElementNearTag,
-  WESBYTE_INSERT_MIME,
-  WESBYTE_MOVE_MIME,
+  appendElementToRoot,
+  insertElementAtIndex,
+  moveElementToIndex,
+  moveElementIndexToRootEnd,
+  setAttributeForIndex,
+  setTextForIndex,
+  getAttributeForIndex,
+  WB_ID_ATTR,
 } from "./editor-helpers";
 import {
   ATTR_JSX_NAME,
   EMPTY_ATTRIBUTES,
   isBooleanAttribute,
   readAttributesForTag,
+  readAttributesForIndex,
   type ElementAttributes,
 } from "./attributeSchema";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Globe, Sparkles, Box, FolderTree } from "lucide-react";
 import NextLink from "next/link";
 import { FileTreeSheet } from "@/components/editor/FileTreeSheet";
-import { ElementsTab } from "./SidebarTabs/ElementsTab";
+import { ElementsTab, type PaletteDragData } from "./SidebarTabs/ElementsTab";
 import { LayerTreeTab } from "./SidebarTabs/LayerTreeTab";
 
 const MOBILE_BREAKPOINT_QUERY = "(max-width: 767px)";
 const APP_ENTRY_FILE = "src/App.jsx";
+
+/** Unified payload shape for anything being dragged onto the canvas — either a brand-new
+ * palette element (dnd-kit driven) or an existing canvas element being repositioned
+ * (manually pointer-driven, since dnd-kit's hooks can't wrap dynamically-rendered nodes). */
+type DragPayload = PaletteDragData | { source: "canvas-move"; wbIndex: number };
+
+/** Reads the nearest stable source-node id at or above a DOM node inside the canvas.
+ * Returns null for nodes rendered by imported components, which carry no id of their own. */
+function findWbIndex(el: HTMLElement | null): number | null {
+  const holder = el?.closest(`[${WB_ID_ATTR}]`) as HTMLElement | null;
+  if (!holder) return null;
+  const raw = holder.getAttribute(WB_ID_ATTR);
+  const parsed = raw === null ? NaN : Number(raw);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+/** How long (ms) a press on a canvas element must be held, and how far (px) it may drift,
+ * before it's treated as a drag rather than a tap/scroll — mirrors dnd-kit's TouchSensor
+ * defaults so behavior feels consistent between the palette and existing-element dragging. */
+const CANVAS_MOVE_ACTIVATION_DELAY = 200;
+const CANVAS_MOVE_ACTIVATION_TOLERANCE = 8;
 
 const mockFiles = {
   [APP_ENTRY_FILE]: `const Header = require('src/Header.jsx');
@@ -70,15 +98,12 @@ function useIsMobile(): boolean {
 }
 
 /** 0-indexed position of `el` among all elements sharing its tag within `container`, in document order — matches how the AST helpers in editor-helpers.ts count occurrences. */
-function computeOccurrenceIndex(container: HTMLElement, el: HTMLElement): number {
-  const sameTag = Array.from(container.querySelectorAll(el.tagName));
-  return sameTag.indexOf(el);
-}
-
 export default function EditorPageContent() {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [selectedElementRaw, setSelectedElementRaw] = useState<string | null>(null);
+  /** Stable source-node index of the current selection, when it came from clicking the canvas. */
+  const [selectedWbIndex, setSelectedWbIndex] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"elements" | "layerTree">("elements");
   const [devicePreview, setDevicePreview] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [interactiveMode, setInteractiveMode] = useState(true);
@@ -101,6 +126,27 @@ export default function EditorPageContent() {
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [dropIndicator, setDropIndicator] = useState<{ top: number; left: number; width: number } | null>(null);
   const isMobile = useIsMobile();
+
+  // Always-current mirror of `files`, read from inside long-lived pointer-event listeners
+  // (attached in a useEffect that doesn't re-run on every file edit) so those listeners
+  // never act on stale file content from before the last edit.
+  const filesRef = useRef(files);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  // What's currently being dragged onto the canvas, if anything — either a new palette
+  // element (source of truth: dnd-kit) or an existing canvas element being repositioned
+  // (source of truth: the manual pointer handlers below).
+  const [activeDragData, setActiveDragData] = useState<DragPayload | null>(null);
+  // The pointer's position at drag start, used together with dnd-kit's `delta` to derive
+  // the live pointer position during a palette drag (dnd-kit doesn't expose raw clientX/Y).
+  const initialPointerRef = useRef<{ x: number; y: number } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: CANVAS_MOVE_ACTIVATION_DELAY, tolerance: CANVAS_MOVE_ACTIVATION_TOLERANCE } })
+  );
 
   useEffect(() => {
     if (!files || Object.keys(files).length === 0) {
@@ -128,30 +174,228 @@ export default function EditorPageContent() {
   // Force re-render of preview when files change
   const filesKey = useMemo(() => Object.keys(files).sort().join(","), [files]);
 
-  // Makes every rendered element in the canvas draggable, so existing elements can be
-  // dragged to a new position (not just new elements dropped in from the palette).
-  // Form controls are excluded so you can still click/type into them normally.
+  // Real drag-and-drop, touch and mouse alike: works for both (a) new elements dragged in
+  // from the palette (driven by dnd-kit, see the DndContext handlers below), and (b)
+  // existing canvas elements being repositioned (driven manually, since dnd-kit's hooks
+  // can't wrap the dynamically-rendered/compiled elements in the canvas). Both paths funnel
+  // through the same computeIndicatorForTarget/updateDropIndicatorForPoint/finalizeDrop logic
+  // so behavior is consistent regardless of source.
+  const computeIndicatorForTarget = (targetEl: HTMLElement, clientY: number) => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return null;
+    const rect = targetEl.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    return {
+      placement: (before ? "before" : "after") as "before" | "after",
+      indicator: {
+        top: (before ? rect.top : rect.bottom) - wrapperRect.top + wrapper.scrollTop,
+        left: rect.left - wrapperRect.left,
+        width: rect.width,
+      },
+    };
+  };
+
+  /** Updates the insertion-line indicator (and the canvas ring highlight) for a live pointer position during a drag. */
+  const updateDropIndicatorForPoint = (x: number, y: number) => {
+    const container = previewRef.current;
+    const wrapper = canvasWrapperRef.current;
+    if (!container || !wrapper) {
+      setDropIndicator(null);
+      setIsDragOverCanvas(false);
+      return;
+    }
+
+    const hovered = document.elementFromPoint(x, y) as HTMLElement | null;
+    const overCanvas = !!hovered && (hovered === container || hovered === wrapper || container.contains(hovered) || wrapper.contains(hovered));
+    setIsDragOverCanvas(overCanvas);
+
+    if (hovered && hovered !== container && container.contains(hovered)) {
+      const result = computeIndicatorForTarget(hovered, y);
+      setDropIndicator(result?.indicator ?? null);
+      return;
+    }
+
+    if (overCanvas) {
+      // Empty canvas space (below/around the rendered content): show the line at the
+      // bottom of the content, since the drop will append to the end of the root element.
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setDropIndicator({
+        top: containerRect.bottom - wrapperRect.top + wrapper.scrollTop,
+        left: containerRect.left - wrapperRect.left,
+        width: containerRect.width,
+      });
+      return;
+    }
+
+    setDropIndicator(null);
+  };
+
+  /** Resolves a finished drag (from either source) into an actual JSX edit. Targets nodes by
+   * their stable data-wb-id index rather than tag+DOM-occurrence, so inserts land correctly
+   * even in the middle of the tree and even when imported components are rendered. Reads
+   * files via filesRef so it's always current when called from a long-lived listener. */
+  const finalizeDrop = (data: DragPayload, x: number, y: number) => {
+    const container = previewRef.current;
+    const wrapper = canvasWrapperRef.current;
+    if (!container || !wrapper) return;
+
+    const hovered = document.elementFromPoint(x, y) as HTMLElement | null;
+    const appCode = filesRef.current?.[APP_ENTRY_FILE];
+    if (!appCode) return;
+
+    const overCanvas =
+      !!hovered && (hovered === container || hovered === wrapper || container.contains(hovered) || wrapper.contains(hovered));
+    if (!overCanvas || !hovered) return;
+
+    // Which source node is under the pointer, if any. Nodes inside imported components
+    // resolve to their nearest annotated ancestor, which is the right place to edit.
+    const targetIndex =
+      hovered === container || hovered === wrapper ? null : findWbIndex(hovered);
+
+    let newCode: string | null = null;
+
+    if (targetIndex !== null) {
+      const { placement } = computeIndicatorForTarget(hovered, y) ?? { placement: "after" as const };
+      if (data.source === "palette") {
+        newCode = insertElementAtIndex(appCode, targetIndex, data.jsx, placement);
+      } else {
+        if (data.wbIndex === targetIndex) return; // dropped on itself
+        newCode = moveElementToIndex(appCode, data.wbIndex, targetIndex, placement);
+      }
+    } else {
+      // Empty canvas space: append to the end of the root element.
+      if (data.source === "palette") {
+        newCode = appendElementToRoot(appCode, data.jsx);
+      } else {
+        newCode = moveElementIndexToRootEnd(appCode, data.wbIndex);
+      }
+    }
+
+    if (newCode && newCode !== appCode) updateFileContent(APP_ENTRY_FILE, newCode);
+  };
+
+  // dnd-kit event handlers for palette → canvas drags. dnd-kit doesn't expose raw pointer
+  // coordinates directly, but `activatorEvent` gives the pointer/mouse/touch event that
+  // started the drag, and `delta` gives movement since then — added together, that's the
+  // live pointer position, without needing a separate window-level listener.
+  const getClientPointFromActivator = (activatorEvent: Event): { x: number; y: number } | null => {
+    if ("clientX" in activatorEvent) {
+      const evt = activatorEvent as MouseEvent | PointerEvent;
+      return { x: evt.clientX, y: evt.clientY };
+    }
+    const touchEvent = activatorEvent as TouchEvent;
+    const touch = touchEvent.touches?.[0] ?? touchEvent.changedTouches?.[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+
+  const handleDndDragStart = (event: DragStartEvent) => {
+    const data = (event.active.data.current as DragPayload | undefined) ?? null;
+    setActiveDragData(data);
+    const point = getClientPointFromActivator(event.activatorEvent);
+    initialPointerRef.current = point;
+    if (point) updateDropIndicatorForPoint(point.x, point.y);
+  };
+
+  const handleDndDragMove = (event: DragMoveEvent) => {
+    if (!initialPointerRef.current) return;
+    const x = initialPointerRef.current.x + event.delta.x;
+    const y = initialPointerRef.current.y + event.delta.y;
+    updateDropIndicatorForPoint(x, y);
+  };
+
+  const handleDndDragEnd = (event: DragEndEvent) => {
+    const data = event.active.data.current as DragPayload | undefined;
+    const start = initialPointerRef.current;
+    setActiveDragData(null);
+    setIsDragOverCanvas(false);
+    setDropIndicator(null);
+    initialPointerRef.current = null;
+    if (!data || !start) return;
+    finalizeDrop(data, start.x + event.delta.x, start.y + event.delta.y);
+  };
+
+  const handleDndDragCancel = () => {
+    setActiveDragData(null);
+    setIsDragOverCanvas(false);
+    setDropIndicator(null);
+    initialPointerRef.current = null;
+  };
+
+  // Makes every rendered element in the canvas manually draggable via Pointer Events (not
+  // dnd-kit, which can't hook into these dynamically-rendered nodes), so existing elements
+  // can be repositioned by touch or mouse. A press must be held past a short delay without
+  // drifting far (matching dnd-kit's own TouchSensor defaults) before it counts as a drag —
+  // this keeps ordinary taps (selection) and scrolling working normally. Form controls are
+  // excluded so you can still click/type into them.
   useEffect(() => {
     const container = previewRef.current;
     if (!container) return;
+    // In Interactive mode the canvas behaves like the real site: no drag capture, no
+    // touch-action override, so buttons/links/scrolling all work normally.
+    if (interactiveMode) return;
 
     const NON_DRAGGABLE_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
     const attached: HTMLElement[] = [];
 
-    const handleDragStart = (e: DragEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
       const el = e.currentTarget as HTMLElement;
-      e.stopPropagation();
-      const occurrence = computeOccurrenceIndex(container, el);
-      e.dataTransfer?.setData(WESBYTE_MOVE_MIME, JSON.stringify({ tag: el.tagName, occurrence }));
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let cancelled = false;
+      let armed = false;
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        clearTimeout(timer);
+      };
+
+      const onMove = (moveEvent: PointerEvent) => {
+        if (!armed) {
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          if (Math.hypot(dx, dy) > CANVAS_MOVE_ACTIVATION_TOLERANCE) {
+            cancelled = true;
+            cleanup();
+          }
+          return;
+        }
+        moveEvent.preventDefault();
+        updateDropIndicatorForPoint(moveEvent.clientX, moveEvent.clientY);
+      };
+
+      const onUp = (upEvent: PointerEvent) => {
+        cleanup();
+        if (armed) {
+          const wbIndex = findWbIndex(el);
+          if (wbIndex !== null) finalizeDrop({ source: "canvas-move", wbIndex }, upEvent.clientX, upEvent.clientY);
+          setActiveDragData(null);
+          setIsDragOverCanvas(false);
+          setDropIndicator(null);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        if (cancelled) return;
+        armed = true;
+        const wbIndex = findWbIndex(el);
+        if (wbIndex === null) return; // not an App.jsx-owned node; nothing we can reposition
+        setActiveDragData({ source: "canvas-move", wbIndex });
+        updateDropIndicatorForPoint(startX, startY);
+      }, CANVAS_MOVE_ACTIVATION_DELAY);
+
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
     };
 
     const walk = (node: Element) => {
       Array.from(node.children).forEach((child) => {
         const el = child as HTMLElement;
         if (!NON_DRAGGABLE_TAGS.has(el.tagName)) {
-          el.draggable = true;
-          el.addEventListener("dragstart", handleDragStart);
+          el.style.touchAction = "none";
+          el.addEventListener("pointerdown", handlePointerDown);
           attached.push(el);
         }
         walk(el);
@@ -160,9 +404,12 @@ export default function EditorPageContent() {
     walk(container);
 
     return () => {
-      attached.forEach((el) => el.removeEventListener("dragstart", handleDragStart));
+      attached.forEach((el) => {
+        el.removeEventListener("pointerdown", handlePointerDown);
+        el.style.touchAction = "";
+      });
     };
-  }, [filesKey]);
+  }, [filesKey, interactiveMode]);
 
   // Dynamic layer tree (full app or selected file)
   const currentFileForLayerTree = useMemo(() => {
@@ -177,11 +424,13 @@ export default function EditorPageContent() {
     return parseJsxToTree(code);
   }, [files, currentFileForLayerTree]);
 
-  // Core selection function
-  const handleSelectElement = (rawTag: string) => {
+  // Core selection function. `wbIndex` pins the selection to one exact source node so edits
+  // apply to the element that was actually clicked, not merely the first one with that tag.
+  const handleSelectElement = (rawTag: string, wbIndex: number | null = null) => {
     const lowerTag = rawTag.toLowerCase();
     setSelectedElement(lowerTag);
     setSelectedElementRaw(rawTag);
+    setSelectedWbIndex(wbIndex);
 
     const isCustom = customComponentNames.has(rawTag);
     setIsCustomComponent(isCustom);
@@ -193,7 +442,11 @@ export default function EditorPageContent() {
     } else {
       setCustomComponentFilePath(null);
       const appCode = files?.[APP_ENTRY_FILE] || "";
-      setAttributes(readAttributesForTag(appCode, lowerTag));
+      setAttributes(
+        wbIndex !== null
+          ? readAttributesForIndex(appCode, wbIndex)
+          : readAttributesForTag(appCode, lowerTag)
+      );
     }
 
     if (isMobile) setIsMobileSheetOpen(true);
@@ -205,8 +458,10 @@ export default function EditorPageContent() {
     if (!container) return;
 
     const handleClick = (e: MouseEvent) => {
-      // On desktop with interactiveMode on, require Shift key
-      if (!isMobile && interactiveMode && !e.shiftKey) return;
+      // Interactive mode means "use the page, don't edit it" -- so selection is suppressed
+      // on every device. On desktop, Shift-click is an escape hatch to select anyway; touch
+      // has no modifier key, so touch users flip the Interactive switch off instead.
+      if (interactiveMode && !(!isMobile && e.shiftKey)) return;
 
       let target = e.target as HTMLElement;
       // Find the deepest element that has a tag name matching a custom component
@@ -218,10 +473,9 @@ export default function EditorPageContent() {
         target = target.parentElement!;
       }
       if (customEl) {
-        handleSelectElement(customEl.tagName);
+        handleSelectElement(customEl.tagName, findWbIndex(customEl));
       } else if (e.target instanceof HTMLElement) {
-        // Fallback to the clicked element's tag
-        handleSelectElement(e.target.tagName);
+        handleSelectElement(e.target.tagName, findWbIndex(e.target));
       }
     };
 
@@ -254,102 +508,31 @@ export default function EditorPageContent() {
 
     let newCode: string;
     if (key === "text") {
-      newCode = setTextForTag(appCode, selectedElement, String(value));
+      newCode =
+        selectedWbIndex !== null
+          ? setTextForIndex(appCode, selectedWbIndex, String(value))
+          : setTextForTag(appCode, selectedElement, String(value));
     } else {
       const jsxName = ATTR_JSX_NAME[key] ?? key;
       const jsxValue = isBooleanAttribute(key) ? (value ? "true" : "") : String(value);
-      newCode = setAttributeForTag(appCode, selectedElement, jsxName, jsxValue);
+      newCode =
+        selectedWbIndex !== null
+          ? setAttributeForIndex(appCode, selectedWbIndex, jsxName, jsxValue)
+          : setAttributeForTag(appCode, selectedElement, jsxName, jsxValue);
     }
 
     updateFileContent(APP_ENTRY_FILE, newCode);
     setAttributes((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Real drag-and-drop: works for both (a) new elements dragged in from the palette, and
-  // (b) existing canvas elements being repositioned. A thin insertion-line indicator shows
-  // exactly where the drop will land, based on whether the cursor is over the top or
-  // bottom half of the hovered element.
-  const computeIndicatorForTarget = (targetEl: HTMLElement, clientY: number) => {
-    const wrapper = canvasWrapperRef.current;
-    if (!wrapper) return null;
-    const rect = targetEl.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const before = clientY < rect.top + rect.height / 2;
-    return {
-      placement: (before ? "before" : "after") as "before" | "after",
-      indicator: {
-        top: (before ? rect.top : rect.bottom) - wrapperRect.top + wrapper.scrollTop,
-        left: rect.left - wrapperRect.left,
-        width: rect.width,
-      },
-    };
-  };
-
-  const handleCanvasDragOver = (e: React.DragEvent) => {
-    const isInsert = e.dataTransfer.types.includes(WESBYTE_INSERT_MIME);
-    const isMove = e.dataTransfer.types.includes(WESBYTE_MOVE_MIME);
-    if (!isInsert && !isMove) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = isMove ? "move" : "copy";
-    setIsDragOverCanvas(true);
-
-    const targetEl = e.target as HTMLElement;
-    const container = previewRef.current;
-    if (!container || !targetEl || targetEl === container) {
-      setDropIndicator(null);
-      return;
-    }
-    const result = computeIndicatorForTarget(targetEl, e.clientY);
-    setDropIndicator(result?.indicator ?? null);
-  };
-
-  const handleCanvasDragLeave = (e: React.DragEvent) => {
-    const wrapper = canvasWrapperRef.current;
-    const related = e.relatedTarget as Node | null;
-    if (wrapper && related && wrapper.contains(related)) return; // still inside, just moved between children
-    setIsDragOverCanvas(false);
-    setDropIndicator(null);
-  };
-
-  const handleCanvasDrop = (e: React.DragEvent) => {
-    setIsDragOverCanvas(false);
-    setDropIndicator(null);
-
-    const container = previewRef.current;
-    const targetEl = e.target as HTMLElement;
-    if (!container || !targetEl || targetEl === container) return;
-
-    const insertSnippet = e.dataTransfer.getData(WESBYTE_INSERT_MIME);
-    const movePayloadRaw = e.dataTransfer.getData(WESBYTE_MOVE_MIME);
-    if (!insertSnippet && !movePayloadRaw) return;
-    e.preventDefault();
-
-    const appCode = files?.[APP_ENTRY_FILE];
-    if (!appCode) return;
-
-    const { placement } = computeIndicatorForTarget(targetEl, e.clientY) ?? { placement: "after" as const };
-    const targetOccurrence = computeOccurrenceIndex(container, targetEl);
-
-    let newCode: string | null = null;
-    if (insertSnippet) {
-      newCode = insertElementNearTag(appCode, targetEl.tagName, insertSnippet, targetOccurrence, placement);
-    } else if (movePayloadRaw) {
-      try {
-        const source = JSON.parse(movePayloadRaw) as { tag: string; occurrence: number };
-        if (source.tag === targetEl.tagName && source.occurrence === targetOccurrence) return; // dropped on itself
-        newCode = moveElementNearTag(appCode, source, { tag: targetEl.tagName, occurrence: targetOccurrence }, placement);
-      } catch {
-        return;
-      }
-    }
-    if (newCode) updateFileContent(APP_ENTRY_FILE, newCode);
-  };
-
   const handleAddCustomAttr = () => {
     if (!selectedElement || !customAttrKey) return;
     const appCode = files?.[APP_ENTRY_FILE];
     if (!appCode) return;
-    const newCode = setAttributeForTag(appCode, selectedElement, customAttrKey, customAttrValue);
+    const newCode =
+      selectedWbIndex !== null
+        ? setAttributeForIndex(appCode, selectedWbIndex, customAttrKey, customAttrValue)
+        : setAttributeForTag(appCode, selectedElement, customAttrKey, customAttrValue);
     updateFileContent(APP_ENTRY_FILE, newCode);
     setAttributes(readAttributesForTag(newCode, selectedElement));
     setCustomAttrKey("");
@@ -399,6 +582,13 @@ export default function EditorPageContent() {
   }
 
   return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDndDragStart}
+      onDragMove={handleDndDragMove}
+      onDragEnd={handleDndDragEnd}
+      onDragCancel={handleDndDragCancel}
+    >
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex h-16 items-center justify-between px-4">
@@ -442,24 +632,18 @@ export default function EditorPageContent() {
             onFileTreeClick={handleFileTreeClick}
             onMobilePropertyOpen={() => setIsMobileSheetOpen(true)}
           />
-          <div className="flex-1 bg-muted/30 overflow-auto flex items-start justify-center p-4">
+          <div className="flex-1 bg-muted/30 overflow-auto p-4">
+            <DeviceFrame device={devicePreview}>
             <div
               ref={canvasWrapperRef}
-              className={`relative shadow-2xl bg-background rounded-lg overflow-auto transition-all duration-200 ${
-                isDragOverCanvas ? "ring-2 ring-primary ring-offset-2" : ""
+              className={`relative bg-background overflow-auto transition-all duration-200 ${
+                isDragOverCanvas ? "ring-2 ring-primary ring-inset" : ""
               }`}
-              style={{
-                width: devicePreview === "desktop" ? "100%" : devicePreview === "tablet" ? "768px" : "375px",
-                maxWidth: "100%",
-                minHeight: "400px",
-              }}
-              onDragOver={handleCanvasDragOver}
-              onDragLeave={handleCanvasDragLeave}
-              onDrop={handleCanvasDrop}
+              style={{ width: "100%", minHeight: "400px" }}
             >
               <div ref={previewRef} className="preview">
                 {previewMode === "full" ? (
-                  <DirectRenderer key={filesKey} />
+                  <DirectRenderer key={filesKey} annotateForEditor />
                 ) : (
                   <ComponentPreviewRenderer
                     key={filesKey}
@@ -475,6 +659,7 @@ export default function EditorPageContent() {
                 />
               )}
             </div>
+            </DeviceFrame>
           </div>
         </div>
 
@@ -528,5 +713,6 @@ export default function EditorPageContent() {
         hasError={!!previewError}
       />
     </div>
+    </DndContext>
   );
 }

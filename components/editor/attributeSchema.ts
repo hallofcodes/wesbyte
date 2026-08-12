@@ -2,6 +2,8 @@ import {
   getAttributeForTag,
   getClassNameForTag,
   getTextForTag,
+  getAttributeForIndex,
+  getTextForIndex,
 } from "./editor-helpers";
 
 /**
@@ -77,6 +79,38 @@ export function readAttributesForTag(code: string, tag: string): ElementAttribut
     className: getClassNameForTag(code, tag),
     id: get("id"),
     text: getTextForTag(code, tag),
+    src: get("src"),
+    alt: get("alt"),
+    href: get("href"),
+    target: get("target"),
+    rel: get("rel"),
+    style: get("style"),
+    width: get("width"),
+    height: get("height"),
+    placeholder: get("placeholder"),
+    disabled: get("disabled") === "true",
+    readOnly: get("readOnly") === "true",
+    autoComplete: get("autoComplete"),
+    tabIndex: get("tabIndex"),
+    ariaLabel: get("ariaLabel"),
+    ariaHidden: get("ariaHidden") === "true",
+    onClick: get("onClick"),
+  };
+}
+
+/**
+ * Same as readAttributesForTag, but reads from one exact source node by its stable
+ * data-wb-id index — so the panel reflects the element the user actually clicked rather
+ * than the first element in the file that happens to share its tag name.
+ */
+export function readAttributesForIndex(code: string, wbIndex: number): ElementAttributes {
+  const get = (attr: keyof ElementAttributes) =>
+    getAttributeForIndex(code, wbIndex, ATTR_JSX_NAME[attr] ?? attr);
+
+  return {
+    className: get("className"),
+    id: get("id"),
+    text: getTextForIndex(code, wbIndex),
     src: get("src"),
     alt: get("alt"),
     href: get("href"),
